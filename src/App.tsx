@@ -109,6 +109,19 @@ export default function App() {
         });
       }
 
+      // Post-processing: enforce quality constraints the LLM might miss
+      if (parsed.summary && parsed.summary.length > 50) {
+        // Truncate at last punctuation within limit
+        const truncated = parsed.summary.slice(0, 50);
+        const lastPunc = Math.max(truncated.lastIndexOf('，'), truncated.lastIndexOf('。'), truncated.lastIndexOf('！'), truncated.lastIndexOf('、'));
+        parsed.summary = lastPunc > 20 ? truncated.slice(0, lastPunc + 1) : truncated;
+      }
+      // Ensure node labels are short
+      parsed.nodes = parsed.nodes.map(n => ({
+        ...n,
+        label: n.label.length > 10 ? n.label.slice(0, 10) : n.label,
+      }));
+
       setLoadingStep('渲染传导图...');
       setData(parsed);
 
