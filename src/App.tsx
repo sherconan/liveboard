@@ -233,16 +233,55 @@ ${marketLines}
             </div>
           )}
 
-          {/* Loading state */}
-          {loading && !hasData && (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center space-y-4">
-                <div className="flex gap-1.5 justify-center">
-                  {['bg-red-500', 'bg-amber-500', 'bg-orange-500', 'bg-emerald-500'].map((c, i) => (
-                    <div key={i} className={`w-2.5 h-2.5 rounded-full ${c} animate-pulse`} style={{ animationDelay: `${i * 200}ms` }} />
-                  ))}
+          {/* Loading overlay — always visible when loading */}
+          {loading && (
+            <div className="absolute inset-0 z-40 bg-[#080c16]/90 backdrop-blur-sm flex items-center justify-center">
+              <div className="text-center space-y-6 max-w-md">
+                {/* Animated graph icon */}
+                <div className="relative mx-auto w-20 h-20">
+                  <div className="absolute inset-0 rounded-full border-2 border-red-500/20 animate-ping" />
+                  <div className="absolute inset-2 rounded-full border-2 border-amber-500/30 animate-ping [animation-delay:400ms]" />
+                  <div className="absolute inset-4 rounded-full border-2 border-emerald-500/30 animate-ping [animation-delay:800ms]" />
+                  <div className="absolute inset-0 flex items-center justify-center text-3xl">🔍</div>
                 </div>
-                <p className="text-sm text-slate-400">{loadingStep}</p>
+
+                {/* Step text */}
+                <div>
+                  <p className="text-lg font-semibold text-slate-200">{loadingStep || '准备中...'}</p>
+                  <p className="text-xs text-slate-500 mt-2">通过 Claude 分析，通常需要 15-30 秒</p>
+                </div>
+
+                {/* Step indicators */}
+                <div className="flex flex-col gap-2 text-left mx-auto w-64">
+                  {[
+                    { key: '匹配', label: '匹配预测市场数据' },
+                    { key: '分析', label: 'AI 推演因果传导链' },
+                    { key: '解析', label: '解析结构化结果' },
+                    { key: '渲染', label: '渲染传导图' },
+                  ].map((step, i) => {
+                    const isActive = loadingStep.includes(step.key);
+                    const isPast = loadingStep && !isActive &&
+                      ['匹配', '分析', '解析', '渲染'].indexOf(step.key) <
+                      ['匹配', '分析', '解析', '渲染'].findIndex(k => loadingStep.includes(k));
+                    return (
+                      <div key={i} className={`flex items-center gap-3 text-sm transition-all duration-300 ${isActive ? 'text-slate-200' : isPast ? 'text-slate-500' : 'text-slate-700'}`}>
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                          isActive ? 'bg-red-500/20 text-red-400 ring-2 ring-red-500/30' :
+                          isPast ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-600'
+                        }`}>
+                          {isPast ? '✓' : i + 1}
+                        </div>
+                        <span>{step.label}</span>
+                        {isActive && <span className="text-red-400 animate-pulse text-xs">●</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Event being analyzed */}
+                <div className="text-xs text-slate-600 bg-slate-800/50 rounded-lg px-4 py-2 mx-auto max-w-xs truncate">
+                  📰 {hotspot}
+                </div>
               </div>
             </div>
           )}
