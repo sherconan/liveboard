@@ -109,7 +109,7 @@ export function buildPrompts(
   "edges": [
     {"source": "源id", "target": "目标id", "label": "传导机制(≤6字)", "weight": "low|medium|high|critical"}
   ],
-  "summary": "交易员风格的一句话判断(≤60字)",
+  "summary": "交易员风格的一句话判断，必须≤40个中文字，像喊单不像研报",
   "coreActions": ["具体操作建议，带标的和方向"],
   "divergenceAnalysis": "AI与市场共识的分歧分析(如有市场数据)",
   "suggestedAssets": "推荐关注的资产，逗号分隔",
@@ -136,7 +136,7 @@ export function buildPrompts(
 3. **质量标准**（自我检查）:
    - 节点总数 10-16 个，边总数 10-20 条
    - 每个 asset 节点必须有至少一条入边
-   - summary 像交易员喊单，不像研究报告：例如"美联储鹰派超预期，科技股短期承压，黄金避险逻辑强化"
+   - summary 必须≤40字！像交易员喊单："Fed鹰派超预期，做空纳指，做多美元黄金"。超过40字是严重错误
    - coreActions 必须具体到标的+方向+理由，例如"减仓纳指ETF(QQQ)，美元走强压制估值"
    - 不要笼统地说"关注风险"这种废话
 

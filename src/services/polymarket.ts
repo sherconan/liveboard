@@ -94,23 +94,40 @@ export async function fetchTrendingEvents(limit = 20): Promise<PolymarketEvent[]
     }));
 }
 
-// Search events by keyword
-export async function searchEvents(query: string, limit = 10): Promise<PolymarketEvent[]> {
-  const url = `${GAMMA_BASE}/events?limit=${limit}&active=true&closed=false&_q=${encodeURIComponent(query)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Gamma API error: ${res.status}`);
-  const data = await res.json();
+// Cache top events to avoid repeated API calls
+let cachedEvents: PolymarketEvent[] = [];
+let cacheTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  return data
-    .filter((e: any) => e.markets && e.markets.length > 0)
-    .map((e: any) => ({
-      id: e.id,
-      slug: e.slug || '',
-      title: e.title || e.markets?.[0]?.question || 'Unknown',
-      markets: (e.markets || []).map(normalizeMarket),
-      volume: parseNumberField(e.volume),
-      volume24hr: parseNumberField(e.volume24hr),
-    }));
+async function getTopEvents(): Promise<PolymarketEvent[]> {
+  if (cachedEvents.length > 0 && Date.now() - cacheTime < CACHE_TTL) {
+    return cachedEvents;
+  }
+  // Fetch top 50 events by volume — this is where the real data is
+  cachedEvents = await fetchTrendingEvents(50);
+  cacheTime = Date.now();
+  return cachedEvents;
+}
+
+// Search events by keyword — local matching on top events since Gamma _q is broken
+export async function searchEvents(query: string, limit = 10): Promise<PolymarketEvent[]> {
+  const events = await getTopEvents();
+  const keywords = query.toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
+
+  if (keywords.length === 0) return events.slice(0, limit);
+
+  // Score each event by keyword match count
+  const scored = events.map(event => {
+    const text = `${event.title} ${event.markets.map(m => m.question + ' ' + (m.groupItemTitle || '')).join(' ')}`.toLowerCase();
+    const matches = keywords.filter(kw => text.includes(kw)).length;
+    return { event, matches };
+  });
+
+  return scored
+    .filter(s => s.matches > 0)
+    .sort((a, b) => b.matches - a.matches || b.event.volume24hr - a.event.volume24hr)
+    .slice(0, limit)
+    .map(s => s.event);
 }
 
 // Fetch price history for a specific token
