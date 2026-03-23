@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Scale, AlertTriangle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface ProbabilityComparisonProps {
-  scenarios: { name: string; probability: number; marketProb?: number }[];
+  scenarios: { name: string; probability: number; rationale?: string; marketProb?: number }[];
 }
 
 export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps) {
@@ -28,8 +28,11 @@ export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps)
 
           return (
             <div key={idx} className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-300 line-clamp-1 flex-1">{scenario.name}</span>
+              <div className="text-sm">
+                <span className="text-slate-300 font-medium">{scenario.name}</span>
+                {scenario.rationale && (
+                  <p className="text-[10px] text-slate-600 mt-0.5 leading-relaxed">{scenario.rationale}</p>
+                )}
               </div>
 
               <div className="space-y-1">

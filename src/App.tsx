@@ -36,44 +36,35 @@ export default function App() {
   // UI
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Auto-match Polymarket markets for the event
-  const matchPolymarkets = useCallback(async (eventText: string) => {
+  // Search Polymarket using AI-generated English queries
+  const matchPolymarkets = useCallback(async (queries: string[]) => {
+    if (!queries?.length) return;
     try {
-      // Extract key terms from the event for Polymarket search
-      const keywords = eventText
-        .replace(/[，。、！？]/g, ' ')
-        .split(/\s+/)
-        .filter(w => w.length > 1)
-        .slice(0, 3)
-        .join(' ');
+      const allMarkets: PolymarketMarket[] = [];
+      const seen = new Set<string>();
 
-      if (!keywords) return;
+      // Search with each query, deduplicate
+      for (const query of queries.slice(0, 4)) {
+        try {
+          const events = await searchEvents(query, 5);
+          for (const e of events) {
+            for (const m of e.markets) {
+              if (!seen.has(m.id) && m.volume24hr > 1000) {
+                seen.add(m.id);
+                allMarkets.push(m);
+              }
+            }
+          }
+        } catch {}
+      }
 
-      const events = await searchEvents(keywords, 5);
-      const markets = events.flatMap(e => e.markets).slice(0, 6);
-      setMatchedMarkets(markets);
+      // Sort by volume (most liquid = most reliable) and take top 6
+      allMarkets.sort((a, b) => b.volume24hr - a.volume24hr);
+      setMatchedMarkets(allMarkets.slice(0, 6));
     } catch {
-      // Polymarket matching is best-effort, don't block on failure
       setMatchedMarkets([]);
     }
   }, []);
-
-  const getMarketContext = (): string => {
-    if (matchedMarkets.length === 0) return '';
-
-    const marketLines = matchedMarkets.slice(0, 3).map(m => {
-      const yesIdx = m.outcomes.findIndex(o => o.toLowerCase() === 'yes');
-      const prob = yesIdx >= 0 ? m.outcomePrices[yesIdx] : m.outcomePrices[0];
-      return `- "${m.groupItemTitle || m.question}": ${(prob * 100).toFixed(1)}%`;
-    }).join('\n');
-
-    return `
-【Polymarket 预测市场参考数据】
-以下是与该事件相关的预测市场定价（基于真金白银的博弈）：
-${marketLines}
-
-请在分析中参考这些市场共识概率。如果你的判断与市场有显著分歧，请在 divergenceAnalysis 中说明原因。`;
-  };
 
   const runSimulation = useCallback(async () => {
     if (!hotspot.trim()) { setError('请输入一条事件性新闻'); return; }
@@ -85,25 +76,14 @@ ${marketLines}
     setSelectedMarket(null);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000);
+    const timeout = setTimeout(() => controller.abort(), 120000);
 
     try {
-      // Step 1: Match Polymarket data (concurrent with prompt building)
-      setLoadingStep('匹配预测市场数据...');
-      const marketPromise = matchPolymarkets(hotspot);
-
-      // Wait a bit for Polymarket data, but don't block
-      await Promise.race([
-        marketPromise,
-        new Promise(r => setTimeout(r, 3000)),
-      ]);
-
-      // Step 2: Build and send LLM request
+      // Step 1: AI analysis (generates transmission chain + Polymarket search queries)
       setLoadingStep('AI 正在分析传导链...');
-      const marketContext = getMarketContext();
       const isAutoMode = !targetAssets.trim();
       const { systemPrompt, userPrompt } = buildPrompts(
-        hotspot, variables, targetAssets, marketContext, matchedMarkets.length > 0, isAutoMode,
+        hotspot, variables, targetAssets, '', false, isAutoMode,
       );
 
       const responseText = await callLLM(systemPrompt, userPrompt, controller.signal);
@@ -112,18 +92,21 @@ ${marketLines}
       const parsed = extractJSON(responseText) as SimulationData;
 
       if (!parsed.nodes?.length || !parsed.edges?.length) {
-        throw new Error('AI 返回的数据不完整，请重试');
-      }
-
-      // Inject market prob into first scenario for comparison
-      if (matchedMarkets.length > 0 && parsed.scenarios.length > 0) {
-        const m = matchedMarkets[0];
-        const yesIdx = m.outcomes.findIndex(o => o.toLowerCase() === 'yes');
-        parsed.scenarios[0].marketProb = yesIdx >= 0 ? m.outcomePrices[yesIdx] : m.outcomePrices[0];
+        throw new Error('AI 返回数据不完整，请重试');
       }
 
       if (isAutoMode && parsed.suggestedAssets) {
         setTargetAssets(parsed.suggestedAssets);
+      }
+
+      // Step 2: Use AI-generated queries to search Polymarket (non-blocking)
+      setLoadingStep('匹配 Polymarket 预测市场...');
+      if (parsed.polymarketQueries?.length) {
+        // Fire and forget - don't block rendering for Polymarket
+        matchPolymarkets(parsed.polymarketQueries).then(() => {
+          // After Polymarket data arrives, we could re-inject probabilities
+          // but for now, just show them in the sidebar
+        });
       }
 
       setLoadingStep('渲染传导图...');
@@ -142,7 +125,7 @@ ${marketLines}
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        setError('请求超时（90s），请检查 LLM 服务');
+        setError('请求超时，请检查 LLM 服务是否运行中');
       } else {
         setError(err.message || '推演失败');
       }
@@ -151,7 +134,7 @@ ${marketLines}
       setLoading(false);
       setLoadingStep('');
     }
-  }, [hotspot, variables, targetAssets, matchedMarkets, matchPolymarkets]);
+  }, [hotspot, variables, targetAssets, matchPolymarkets]);
 
   const loadAnalysis = useCallback((index: number) => {
     const a = analyses[index];
@@ -254,9 +237,9 @@ ${marketLines}
                 {/* Step indicators */}
                 <div className="flex flex-col gap-2 text-left mx-auto w-64">
                   {[
-                    { key: '匹配', label: '匹配预测市场数据' },
                     { key: '分析', label: 'AI 推演因果传导链' },
                     { key: '解析', label: '解析结构化结果' },
+                    { key: 'Polymarket', label: '匹配 Polymarket 市场' },
                     { key: '渲染', label: '渲染传导图' },
                   ].map((step, i) => {
                     const isActive = loadingStep.includes(step.key);

@@ -48,7 +48,7 @@ function getIcon(type: string, sentiment?: string) {
 }
 
 const CustomNode = ({ data }: NodeProps) => {
-  const { label, type, sentiment, phase, nodePhase } = data;
+  const { label, type, sentiment, phase, nodePhase, detail } = data;
   const typeLabel = typeLabels[type] || type;
 
   let style = typeStyles[type] || typeStyles.asset;
@@ -63,7 +63,7 @@ const CustomNode = ({ data }: NodeProps) => {
   return (
     <div
       className={`
-        px-4 py-3 rounded-xl border backdrop-blur-md flex items-center gap-3
+        group relative px-4 py-3 rounded-xl border backdrop-blur-md flex items-center gap-3
         min-w-[160px] max-w-[240px]
         ${style.bg} ${style.border} ${style.glow}
         transition-all duration-700 ease-out
@@ -79,6 +79,12 @@ const CustomNode = ({ data }: NodeProps) => {
         <span className="text-[9px] uppercase tracking-widest opacity-40 font-bold text-slate-300">{typeLabel}</span>
         <span className="text-[13px] font-medium leading-tight mt-0.5 text-slate-100 break-words">{label}</span>
       </div>
+      {/* Tooltip on hover */}
+      {detail && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-slate-300 leading-relaxed max-w-[280px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+          {detail}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} className="w-2 h-2 !bg-slate-500 !border-0 !opacity-0" />
     </div>
   );
@@ -145,6 +151,7 @@ export function LiveGraph({ data, animate = false }: LiveGraphProps) {
         label: n.label,
         type: n.type,
         sentiment: n.sentiment,
+        detail: n.detail,
         phase: phaseRef.current,
         nodePhase: nodePhaseMap[n.id],
       },
