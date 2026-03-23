@@ -1,107 +1,46 @@
-import React, { useState, useCallback } from 'react';
-import { Sidebar } from './components/Sidebar';
+import React, { useState, useCallback, useRef } from 'react';
+import { Header } from './components/Header';
+import { EventPanel } from './components/EventPanel';
 import { LiveGraph } from './components/LiveGraph';
 import { SummaryPanel } from './components/SummaryPanel';
 import { PriceTrend } from './components/PriceTrend';
-import { Loader2, Activity, X } from 'lucide-react';
 import { PolymarketEvent, PolymarketMarket } from './services/polymarket';
+import { SimulationData, Variable, Analysis, callLLM, extractJSON, buildPrompts } from './services/llm';
 
-const LLM_BASE_URL = process.env.LLM_BASE_URL || '/api/llm/v1';
-const LLM_API_KEY = process.env.LLM_API_KEY || 'not-needed';
-const LLM_MODEL = process.env.LLM_MODEL || 'MiniMax-M2.5';
-
-export interface SimulationData {
-  scenarios: { name: string; probability: number; marketProb?: number }[];
-  nodes: { id: string; label: string; type: 'hotspot' | 'variable' | 'impact' | 'asset'; sentiment?: 'positive' | 'negative' | 'neutral' }[];
-  edges: { source: string; target: string; label: string; weight: 'low' | 'medium' | 'high' | 'critical' }[];
-  summary: string;
-  coreActions: string[];
-  divergenceAnalysis?: string;
-}
-
-const DEFAULT_DATA: SimulationData = {
-  scenarios: [
-    { name: '全球科技股抛售', probability: 75 },
-    { name: '能源危机升级', probability: 40 },
-    { name: '避险资金涌入', probability: 60 },
-  ],
-  nodes: [
-    { id: 'hotspot', label: '以色列突袭伊朗', type: 'hotspot' },
-    { id: 'var1', label: '美联储鹰派', type: 'variable' },
-    { id: 'var2', label: '原油供应中断', type: 'variable' },
-    { id: 'impact1', label: '美债收益率飙升', type: 'impact' },
-    { id: 'impact2', label: '能源价格暴涨', type: 'impact' },
-    { id: 'asset1', label: '半导体板块', type: 'asset', sentiment: 'negative' },
-    { id: 'asset2', label: '军工板块', type: 'asset', sentiment: 'positive' },
-    { id: 'asset3', label: '黄金', type: 'asset', sentiment: 'positive' },
-  ],
-  edges: [
-    { source: 'hotspot', target: 'impact1', label: '地缘风险', weight: 'high' },
-    { source: 'hotspot', target: 'impact2', label: '供应威胁', weight: 'critical' },
-    { source: 'var1', target: 'impact1', label: '高利率', weight: 'high' },
-    { source: 'var2', target: 'impact2', label: '断供风险', weight: 'medium' },
-    { source: 'impact1', target: 'asset1', label: '估值受压', weight: 'critical' },
-    { source: 'impact2', target: 'asset2', label: '军费增长', weight: 'high' },
-    { source: 'impact1', target: 'asset3', label: '避险需求', weight: 'medium' },
-  ],
-  summary: '双杀局面：地缘避险拉高能源成本，高息环境压制科技估值。军工和黄金成为避风港。',
-  coreActions: ['减仓消费类芯片', '关注军工级 FPGA 标的', '增配黄金 ETF', '观察原油期货升水结构'],
+const EMPTY_DATA: SimulationData = {
+  scenarios: [],
+  nodes: [],
+  edges: [],
+  summary: '',
+  coreActions: [],
 };
 
-async function callLLM(systemPrompt: string, userPrompt: string, signal?: AbortSignal): Promise<string> {
-  const res = await fetch(`${LLM_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${LLM_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      messages: [
-        { role: 'system', content: [{ type: 'text', text: systemPrompt }] },
-        { role: 'user', content: [{ type: 'text', text: userPrompt }] },
-      ],
-      temperature: 0.7,
-    }),
-    signal,
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    throw new Error(`LLM API 错误 (${res.status}): ${errText || res.statusText}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
-}
-
-function extractJSON(text: string): any {
-  try { return JSON.parse(text); } catch {}
-
-  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
-  if (fenceMatch) {
-    try { return JSON.parse(fenceMatch[1]); } catch {}
-  }
-
-  const braceMatch = text.match(/\{[\s\S]*\}/);
-  if (braceMatch) {
-    try { return JSON.parse(braceMatch[0]); } catch {}
-  }
-
-  throw new Error('无法从 AI 回复中解析 JSON，请重试');
-}
-
 export default function App() {
-  const [hotspot, setHotspot] = useState('以色列突袭伊朗');
-  const [variables, setVariables] = useState([{ id: '1', name: '美联储利率', value: '鹰派 (不降息)' }]);
-  const [targetAssets, setTargetAssets] = useState('半导体板块, 军工, 黄金');
-  const [data, setData] = useState<SimulationData>(DEFAULT_DATA);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Input state
+  const [hotspot, setHotspot] = useState('');
+  const [variables, setVariables] = useState<Variable[]>([]);
+  const [targetAssets, setTargetAssets] = useState('');
 
+  // Analysis state
+  const [data, setData] = useState<SimulationData>(EMPTY_DATA);
+  const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [shouldAnimate, setShouldAnimate] = useState(false);
+
+  // History
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(-1);
+
+  // Polymarket state
   const [selectedEvent, setSelectedEvent] = useState<PolymarketEvent | null>(null);
   const [selectedMarket, setSelectedMarket] = useState<PolymarketMarket | null>(null);
   const [showTrend, setShowTrend] = useState(false);
+
+  // UI state
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const graphRef = useRef<HTMLDivElement>(null);
 
   const handleSelectEvent = useCallback((event: PolymarketEvent, market: PolymarketMarket) => {
     setSelectedEvent(event);
@@ -110,183 +49,211 @@ export default function App() {
     setShowTrend(true);
   }, []);
 
-  const getMarketProbContext = (): string => {
+  const getMarketContext = (): string => {
     if (!selectedMarket) return '';
     const yesIdx = selectedMarket.outcomes.findIndex(o => o.toLowerCase() === 'yes');
     const prob = yesIdx >= 0 ? selectedMarket.outcomePrices[yesIdx] : selectedMarket.outcomePrices[0];
     return `
-【Polymarket 市场数据参考】
+【Polymarket 市场数据】
 事件: ${selectedEvent?.title || selectedMarket.question}
-市场问题: ${selectedMarket.question}
-${selectedMarket.groupItemTitle ? `具体选项: ${selectedMarket.groupItemTitle}` : ''}
-市场共识概率: ${(prob * 100).toFixed(1)}%（基于真金白银的预测市场定价）
-24小时交易量: $${selectedMarket.volume24hr.toLocaleString()}
-${selectedMarket.oneDayPriceChange !== null ? `24小时价格变动: ${(selectedMarket.oneDayPriceChange * 100).toFixed(1)}%` : ''}
+问题: ${selectedMarket.question}
+${selectedMarket.groupItemTitle ? `选项: ${selectedMarket.groupItemTitle}` : ''}
+市场共识概率: ${(prob * 100).toFixed(1)}%
+24h交易量: $${selectedMarket.volume24hr.toLocaleString()}
+${selectedMarket.oneDayPriceChange !== null ? `24h变动: ${(selectedMarket.oneDayPriceChange * 100).toFixed(1)}%` : ''}
 
-请在推演中对比你的分析概率与市场共识，如果有显著分歧，请解释原因。`;
+请对比你的分析与市场共识，如有分歧请解释原因。`;
   };
 
-  const runSimulation = useCallback(async () => {
-    if (!hotspot.trim()) {
-      setError('请输入热点事件');
-      return;
-    }
+  const runSimulation = useCallback(async (autoMode: boolean) => {
+    if (!hotspot.trim()) { setError('请先输入或选择一个事件'); return; }
+
     setLoading(true);
     setError(null);
+    setShouldAnimate(true);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000);
+    const timeout = setTimeout(() => controller.abort(), 90000);
 
     try {
-      const marketContext = getMarketProbContext();
+      setLoadingStep('构建分析框架...');
+      await new Promise(r => setTimeout(r, 300));
 
-      const systemPrompt = `你是一个资深策略分析师，擅长跨市场逻辑推演。你必须严格以 JSON 格式回复，不要包含任何其他文字。
+      const marketContext = getMarketContext();
+      const { systemPrompt, userPrompt } = buildPrompts(
+        hotspot, variables, autoMode ? '' : targetAssets,
+        marketContext, !!selectedMarket, autoMode
+      );
 
-JSON 格式要求:
-{
-  "scenarios": [{"name": "场景名称", "probability": 概率数字(0-100)}],
-  "nodes": [{"id": "唯一id", "label": "显示名称", "type": "hotspot|variable|impact|asset", "sentiment": "positive|negative|neutral"}],
-  "edges": [{"source": "源节点id", "target": "目标节点id", "label": "关系描述", "weight": "low|medium|high|critical"}],
-  "summary": "总结文字",
-  "coreActions": ["动作1", "动作2"],
-  "divergenceAnalysis": "AI与市场分歧分析（如有市场数据时提供）"
-}
-
-规则:
-- nodes 的 type 只能是 hotspot、variable、impact、asset 四种
-- asset 类型的节点必须有 sentiment 字段
-- edges 的 weight 只能是 low、medium、high、critical 四种
-- 生成至少 6 个节点，形成清晰的因果传导链
-- 所有文字内容使用中文
-- 只输出 JSON，不要输出任何解释性文字`;
-
-      const userPrompt = `请分析以下场景并输出 JSON:
-
-热点事件: ${hotspot}
-用户变量: ${variables.map((v) => `${v.name}: ${v.value}`).join(', ')}
-影响标的: ${targetAssets}
-${marketContext}
-
-任务:
-1. 综合以上信息${selectedMarket ? '以及 Polymarket 市场数据' : ''}，计算传导路径
-2. 识别路径中的"断点"（Risk Break）
-3. 给出至少3个场景和概率判断
-4. 给出至少6个节点和连线，形成清晰的多层传导图
-${selectedMarket ? '5. 对比你的分析概率与 Polymarket 市场共识概率，在 divergenceAnalysis 中分析分歧原因' : ''}
-${selectedMarket ? '6. scenarios 中请给出你独立判断的概率（不是直接复制市场概率）' : ''}`;
-
+      setLoadingStep('AI 正在推演因果链...');
       const responseText = await callLLM(systemPrompt, userPrompt, controller.signal);
-      const parsedData = extractJSON(responseText) as SimulationData;
 
-      if (!parsedData.nodes?.length || !parsedData.edges?.length) {
-        throw new Error('AI 返回的数据不完整，缺少节点或连线');
+      setLoadingStep('解析推演结果...');
+      const parsed = extractJSON(responseText) as SimulationData;
+
+      if (!parsed.nodes?.length || !parsed.edges?.length) {
+        throw new Error('AI 返回的数据不完整');
       }
 
-      if (selectedMarket) {
+      // Inject market prob for comparison
+      if (selectedMarket && parsed.scenarios.length > 0) {
         const yesIdx = selectedMarket.outcomes.findIndex(o => o.toLowerCase() === 'yes');
         const marketProb = yesIdx >= 0 ? selectedMarket.outcomePrices[yesIdx] : selectedMarket.outcomePrices[0];
-        if (parsedData.scenarios.length > 0) {
-          parsedData.scenarios[0].marketProb = marketProb;
-        }
+        parsed.scenarios[0].marketProb = marketProb;
       }
 
-      setData(parsedData);
+      // If auto-mode returned suggested assets, update the field
+      if (autoMode && parsed.suggestedAssets) {
+        setTargetAssets(parsed.suggestedAssets);
+      }
+
+      setLoadingStep('渲染传导图...');
+      setData(parsed);
+
+      // Save to history
+      const analysis: Analysis = {
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        hotspot,
+        data: parsed,
+        eventTitle: selectedEvent?.title,
+      };
+      setAnalyses(prev => [analysis, ...prev]);
+      setCurrentIndex(0);
+
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        setError('请求超时（60s），请检查网络或 LLM 服务');
+        setError('请求超时（90s），请检查 LLM 服务');
       } else {
-        setError(err.message || '推演失败，请重试');
+        setError(err.message || '推演失败');
       }
     } finally {
       clearTimeout(timeout);
       setLoading(false);
+      setLoadingStep('');
     }
   }, [hotspot, variables, targetAssets, selectedEvent, selectedMarket]);
 
+  const loadAnalysis = useCallback((index: number) => {
+    const a = analyses[index];
+    if (!a) return;
+    setCurrentIndex(index);
+    setData(a.data);
+    setHotspot(a.hotspot);
+    setShouldAnimate(false);
+  }, [analyses]);
+
+  const handleExport = useCallback(() => {
+    if (!data.nodes.length) return;
+    const exportData = {
+      hotspot,
+      timestamp: new Date().toISOString(),
+      ...data,
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `liveboard-${hotspot.slice(0, 20).replace(/\s/g, '_')}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [data, hotspot]);
+
   const trendTokenId = selectedMarket?.clobTokenIds?.[0] || null;
-  const trendTitle = selectedMarket
-    ? (selectedMarket.groupItemTitle || selectedMarket.question)
-    : '';
+  const trendTitle = selectedMarket?.groupItemTitle || selectedMarket?.question || '';
+  const hasData = data.nodes.length > 0;
 
   return (
-    <div className="flex h-screen bg-[#0a0e1a] text-slate-100 font-sans overflow-hidden">
-      <Sidebar
-        hotspot={hotspot}
-        setHotspot={setHotspot}
-        variables={variables}
-        setVariables={setVariables}
-        targetAssets={targetAssets}
-        setTargetAssets={setTargetAssets}
-        scenarios={data.scenarios}
-        onRun={runSimulation}
+    <div className="flex flex-col h-screen bg-[#080c16] text-slate-100 font-sans overflow-hidden">
+      <Header
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
         loading={loading}
-        onSelectEvent={handleSelectEvent}
-        selectedMarketId={selectedMarket?.id}
+        loadingStep={loadingStep}
+        analyses={analyses}
+        currentIndex={currentIndex}
+        onSelectAnalysis={loadAnalysis}
+        onExport={handleExport}
       />
 
-      <main className="flex-1 flex flex-col relative">
-        <header className="h-14 border-b border-slate-800 flex items-center px-6 justify-between bg-[#0d1220]/90 backdrop-blur-md z-10">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-600 to-amber-600 flex items-center justify-center">
-              <Activity className="w-4 h-4 text-white" />
-            </div>
-            <h1 className="font-bold tracking-tight text-slate-100">
-              LiveBoard
-              <span className="text-slate-500 font-normal text-sm ml-2">实时决策引擎</span>
-              <span className="text-red-500/50 font-normal text-xs ml-2">× Polymarket</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            {selectedMarket && (
-              <button
-                onClick={() => setShowTrend(!showTrend)}
-                className={`text-xs px-3 py-1.5 rounded-md border transition-all ${
-                  showTrend
-                    ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
-                }`}
-              >
-                {showTrend ? '隐藏趋势图' : '显示趋势图'}
-              </button>
-            )}
-            {loading && (
-              <div className="flex items-center gap-2 text-sm text-amber-400">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>推演中...</span>
-              </div>
-            )}
-          </div>
-        </header>
+      <div className="flex flex-1 overflow-hidden">
+        <EventPanel
+          hotspot={hotspot}
+          setHotspot={setHotspot}
+          variables={variables}
+          setVariables={setVariables}
+          targetAssets={targetAssets}
+          setTargetAssets={setTargetAssets}
+          scenarios={data.scenarios}
+          onRun={runSimulation}
+          loading={loading}
+          onSelectEvent={handleSelectEvent}
+          selectedMarketId={selectedMarket?.id}
+          isOpen={sidebarOpen}
+        />
 
-        <div className="flex-1 flex flex-col relative">
+        <main className="flex-1 flex flex-col relative overflow-hidden" ref={graphRef}>
+          {/* Error toast */}
           {error && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2.5 rounded-lg text-sm flex items-center gap-3 backdrop-blur-md">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm flex items-center gap-3 backdrop-blur-md">
               <span>{error}</span>
-              <button onClick={() => setError(null)} className="text-red-400/60 hover:text-red-300 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
+              <button onClick={() => setError(null)} className="text-red-400/60 hover:text-red-300 text-lg leading-none">&times;</button>
             </div>
           )}
 
-          <div className={`flex-1 flex ${showTrend && selectedMarket ? 'flex-col' : ''}`}>
-            <div className={showTrend && selectedMarket ? 'flex-1 min-h-0' : 'flex-1'}>
-              <LiveGraph data={data} />
-            </div>
-            {showTrend && selectedMarket && (
-              <div className="h-[220px] p-3 border-t border-slate-800 bg-[#0d1220]">
-                <PriceTrend tokenId={trendTokenId} marketTitle={trendTitle} />
+          {/* Empty state */}
+          {!hasData && !loading && (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-4">
+              <div className="text-5xl opacity-20">🌍</div>
+              <div className="text-center">
+                <p className="text-lg font-semibold text-slate-400">选择一个事件，开始分析</p>
+                <p className="text-sm mt-2 max-w-sm text-slate-600">
+                  从左侧 Polymarket 热门事件中选择，或直接输入事件描述，一键生成因果传导图
+                </p>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
 
-        <SummaryPanel
-          summary={data.summary}
-          actions={data.coreActions}
-          divergenceAnalysis={data.divergenceAnalysis}
-          hasMarketData={!!selectedMarket}
-        />
-      </main>
+          {/* Graph + Trend */}
+          {(hasData || loading) && (
+            <div className={`flex-1 flex flex-col`}>
+              <div className={`flex-1 min-h-0 ${showTrend && selectedMarket ? '' : ''}`}>
+                {hasData && <LiveGraph data={data} animate={shouldAnimate} />}
+                {loading && !hasData && (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center space-y-4">
+                      <div className="flex gap-1.5 justify-center">
+                        {['bg-red-500', 'bg-amber-500', 'bg-orange-500', 'bg-emerald-500'].map((c, i) => (
+                          <div key={i} className={`w-2.5 h-2.5 rounded-full ${c} animate-pulse`} style={{ animationDelay: `${i * 200}ms` }} />
+                        ))}
+                      </div>
+                      <p className="text-sm text-slate-400">{loadingStep}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {showTrend && selectedMarket && hasData && (
+                <div className="h-[200px] p-3 border-t border-slate-800/50 bg-[#0a0e1a]">
+                  <PriceTrend tokenId={trendTokenId} marketTitle={trendTitle} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Summary panel */}
+          {hasData && !loading && (
+            <SummaryPanel
+              summary={data.summary}
+              actions={data.coreActions}
+              divergenceAnalysis={data.divergenceAnalysis}
+              hasMarketData={!!selectedMarket}
+              showTrend={showTrend && !!selectedMarket}
+              onToggleTrend={() => setShowTrend(!showTrend)}
+              hasTrendData={!!selectedMarket}
+            />
+          )}
+        </main>
+      </div>
     </div>
   );
 }

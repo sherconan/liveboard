@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -13,152 +13,200 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import dagre from '@dagrejs/dagre';
-import { SimulationData } from '../App';
-import { AlertCircle, TrendingDown, TrendingUp, Minus, Zap, Activity } from 'lucide-react';
+import { SimulationData } from '../services/llm';
+import { AlertCircle, TrendingDown, TrendingUp, Minus, Zap, Activity, Globe } from 'lucide-react';
 
-const typeMap: Record<string, string> = {
-  hotspot: '热点',
-  variable: '变量',
-  impact: '传导',
-  asset: '标的'
+const typeOrder = ['hotspot', 'variable', 'impact', 'asset'];
+
+const typeLabels: Record<string, string> = {
+  hotspot: '热点事件',
+  variable: '关键变量',
+  impact: '传导效应',
+  asset: '受影标的',
 };
 
-const typeColors: Record<string, { bg: string; border: string; text: string; glow: string; iconBg: string }> = {
-  hotspot:  { bg: 'bg-red-950/60',    border: 'border-red-500/50',    text: 'text-red-300',    glow: 'shadow-[0_0_24px_rgba(239,68,68,0.2)]',  iconBg: 'bg-red-500/20' },
-  variable: { bg: 'bg-amber-950/60',   border: 'border-amber-500/50',  text: 'text-amber-300',  glow: '',                                       iconBg: 'bg-amber-500/20' },
-  impact:   { bg: 'bg-orange-950/60',  border: 'border-orange-500/50', text: 'text-orange-300', glow: '',                                       iconBg: 'bg-orange-500/20' },
-  asset:    { bg: 'bg-slate-800/80',   border: 'border-slate-500/50',  text: 'text-slate-200',  glow: '',                                       iconBg: 'bg-slate-600/30' },
+const typeStyles: Record<string, { bg: string; border: string; glow: string; iconBg: string }> = {
+  hotspot:  { bg: 'bg-red-950/70',   border: 'border-red-500/40',   glow: 'shadow-[0_0_20px_rgba(239,68,68,0.15)]', iconBg: 'bg-red-500/20' },
+  variable: { bg: 'bg-amber-950/70',  border: 'border-amber-500/40', glow: '', iconBg: 'bg-amber-500/20' },
+  impact:   { bg: 'bg-orange-950/70', border: 'border-orange-500/40',glow: '', iconBg: 'bg-orange-500/20' },
+  asset:    { bg: 'bg-slate-800/80',  border: 'border-slate-600/40', glow: '', iconBg: 'bg-slate-600/30' },
 };
 
-const sentimentColors: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
-  positive: { bg: 'bg-emerald-950/60', border: 'border-emerald-500/50', text: 'text-emerald-300', iconBg: 'bg-emerald-500/20' },
-  negative: { bg: 'bg-red-950/60',     border: 'border-red-500/50',     text: 'text-red-300',     iconBg: 'bg-red-500/20' },
-  neutral:  { bg: 'bg-slate-800/80',   border: 'border-slate-500/50',   text: 'text-slate-300',   iconBg: 'bg-slate-600/30' },
+const sentimentStyle: Record<string, { bg: string; border: string; iconBg: string }> = {
+  positive: { bg: 'bg-emerald-950/70', border: 'border-emerald-500/40', iconBg: 'bg-emerald-500/20' },
+  negative: { bg: 'bg-red-950/70',     border: 'border-red-500/40',     iconBg: 'bg-red-500/20' },
+  neutral:  { bg: 'bg-slate-800/80',   border: 'border-slate-600/40',   iconBg: 'bg-slate-600/30' },
 };
+
+function getIcon(type: string, sentiment?: string) {
+  if (type === 'hotspot') return <Globe className="w-4 h-4 text-red-400" />;
+  if (type === 'variable') return <Zap className="w-4 h-4 text-amber-400" />;
+  if (type === 'impact') return <Activity className="w-4 h-4 text-orange-400" />;
+  if (sentiment === 'positive') return <TrendingUp className="w-4 h-4 text-emerald-400" />;
+  if (sentiment === 'negative') return <TrendingDown className="w-4 h-4 text-red-400" />;
+  return <Minus className="w-4 h-4 text-slate-400" />;
+}
 
 const CustomNode = ({ data }: NodeProps) => {
-  const { label, type, sentiment } = data;
-  const displayType = typeMap[type] || type;
+  const { label, type, sentiment, phase, nodePhase } = data;
+  const typeLabel = typeLabels[type] || type;
 
-  let colors = typeColors[type] || typeColors.asset;
-  let icon = <Activity className="w-4 h-4" />;
-
-  if (type === 'hotspot') {
-    icon = <AlertCircle className="w-4 h-4 text-red-400" />;
-  } else if (type === 'variable') {
-    icon = <Zap className="w-4 h-4 text-amber-400" />;
-  } else if (type === 'impact') {
-    icon = <Activity className="w-4 h-4 text-orange-400" />;
-  } else if (type === 'asset') {
-    const sc = sentimentColors[sentiment] || sentimentColors.neutral;
-    colors = { ...colors, ...sc };
-    icon = sentiment === 'positive'
-      ? <TrendingUp className="w-4 h-4 text-emerald-400" />
-      : sentiment === 'negative'
-      ? <TrendingDown className="w-4 h-4 text-red-400" />
-      : <Minus className="w-4 h-4 text-slate-400" />;
+  let style = typeStyles[type] || typeStyles.asset;
+  if (type === 'asset' && sentiment) {
+    const ss = sentimentStyle[sentiment] || sentimentStyle.neutral;
+    style = { ...style, ...ss };
   }
 
+  const visible = phase >= nodePhase;
+  const appearing = phase === nodePhase;
+
   return (
-    <div className={`px-4 py-3 rounded-xl border backdrop-blur-md flex items-center gap-3 min-w-[180px] max-w-[260px] ${colors.bg} ${colors.border} ${colors.text} ${colors.glow}`}>
-      <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-slate-400 !border-0" />
-      <div className={`p-1.5 rounded-lg shrink-0 ${colors.iconBg}`}>
-        {icon}
+    <div
+      className={`
+        px-4 py-3 rounded-xl border backdrop-blur-md flex items-center gap-3
+        min-w-[160px] max-w-[240px]
+        ${style.bg} ${style.border} ${style.glow}
+        transition-all duration-700 ease-out
+        ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}
+        ${appearing ? 'ring-1 ring-white/10' : ''}
+      `}
+    >
+      <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-slate-500 !border-0 !opacity-0" />
+      <div className={`p-1.5 rounded-lg shrink-0 ${style.iconBg}`}>
+        {getIcon(type, sentiment)}
       </div>
       <div className="flex flex-col min-w-0">
-        <span className="text-[10px] uppercase tracking-wider opacity-50 font-bold">{displayType}</span>
-        <span className="text-sm font-medium leading-tight mt-0.5 break-words">{label}</span>
+        <span className="text-[9px] uppercase tracking-widest opacity-40 font-bold text-slate-300">{typeLabel}</span>
+        <span className="text-[13px] font-medium leading-tight mt-0.5 text-slate-100 break-words">{label}</span>
       </div>
-      <Handle type="source" position={Position.Bottom} className="w-2 h-2 !bg-slate-400 !border-0" />
+      <Handle type="source" position={Position.Bottom} className="w-2 h-2 !bg-slate-500 !border-0 !opacity-0" />
     </div>
   );
 };
 
 const nodeTypes = { custom: CustomNode };
+const NODE_W = 200;
+const NODE_H = 56;
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 60;
-
-function getLayoutedElements(nodes: Node[], edges: Edge[]) {
+function layoutElements(nodes: Node[], edges: Edge[]) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'TB', ranksep: 100, nodesep: 60, marginx: 40, marginy: 40 });
-
-  nodes.forEach((node) => {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-  });
-  edges.forEach((edge) => {
-    g.setEdge(edge.source, edge.target);
-  });
-
+  g.setGraph({ rankdir: 'TB', ranksep: 90, nodesep: 50, marginx: 40, marginy: 40 });
+  nodes.forEach(n => g.setNode(n.id, { width: NODE_W, height: NODE_H }));
+  edges.forEach(e => g.setEdge(e.source, e.target));
   dagre.layout(g);
-
-  const layoutedNodes = nodes.map((node) => {
-    const pos = g.node(node.id);
-    return {
-      ...node,
-      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
-    };
+  return nodes.map(n => {
+    const pos = g.node(n.id);
+    return { ...n, position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 } };
   });
-
-  return { nodes: layoutedNodes, edges };
 }
 
-export function LiveGraph({ data }: { data: SimulationData }) {
+interface LiveGraphProps {
+  data: SimulationData;
+  animate?: boolean;
+}
+
+export function LiveGraph({ data, animate = false }: LiveGraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [phase, setPhase] = useState(animate ? -1 : 4);
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+
+  // Reset phase when data changes
+  useEffect(() => {
+    if (animate) {
+      setPhase(-1);
+      // Start animation sequence
+      const timers = [
+        setTimeout(() => setPhase(0), 300),   // hotspots
+        setTimeout(() => setPhase(1), 800),   // variables
+        setTimeout(() => setPhase(2), 1400),  // impacts
+        setTimeout(() => setPhase(3), 2000),  // assets
+        setTimeout(() => setPhase(4), 2600),  // all edges visible
+      ];
+      return () => timers.forEach(clearTimeout);
+    } else {
+      setPhase(4);
+    }
+  }, [data, animate]);
 
   useEffect(() => {
-    const initialNodes: Node[] = data.nodes.map((n) => ({
+    const nodePhaseMap: Record<string, number> = {};
+    data.nodes.forEach(n => {
+      nodePhaseMap[n.id] = typeOrder.indexOf(n.type);
+      if (nodePhaseMap[n.id] === -1) nodePhaseMap[n.id] = 3;
+    });
+
+    const initialNodes: Node[] = data.nodes.map(n => ({
       id: n.id,
       type: 'custom',
-      data: { label: n.label, type: n.type, sentiment: n.sentiment },
+      data: {
+        label: n.label,
+        type: n.type,
+        sentiment: n.sentiment,
+        phase: phaseRef.current,
+        nodePhase: nodePhaseMap[n.id],
+      },
       position: { x: 0, y: 0 },
     }));
 
     const initialEdges: Edge[] = data.edges.map((e, i) => {
       let strokeWidth = 1.5;
-      let strokeColor = '#475569'; // slate-600
+      let strokeColor = '#334155';
       let animated = false;
+      if (e.weight === 'critical') { strokeWidth = 2.5; strokeColor = '#ef4444'; animated = true; }
+      else if (e.weight === 'high') { strokeWidth = 2; strokeColor = '#f59e0b'; }
+      else if (e.weight === 'medium') { strokeWidth = 1.5; strokeColor = '#475569'; }
 
-      if (e.weight === 'critical') {
-        strokeWidth = 3;
-        strokeColor = '#ef4444';
-        animated = true;
-      } else if (e.weight === 'high') {
-        strokeWidth = 2.5;
-        strokeColor = '#f59e0b';
-      } else if (e.weight === 'medium') {
-        strokeWidth = 2;
-        strokeColor = '#64748b';
-      }
+      const sourcePhase = nodePhaseMap[e.source] ?? 0;
+      const targetPhase = nodePhaseMap[e.target] ?? 0;
+      const edgePhase = Math.max(sourcePhase, targetPhase);
 
       return {
-        id: `e${i}-${e.source}-${e.target}`,
+        id: `e${i}`,
         source: e.source,
         target: e.target,
         label: e.label,
         animated,
-        style: { strokeWidth, stroke: strokeColor },
-        labelStyle: { fill: '#94a3b8', fontSize: 11, fontWeight: 600 },
-        labelBgStyle: { fill: '#0f172a', fillOpacity: 0.9, rx: 6, ry: 6 },
-        labelBgPadding: [6, 4] as [number, number],
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: strokeColor,
-          width: 14,
-          height: 14,
-        },
+        hidden: phaseRef.current < edgePhase,
+        style: { strokeWidth, stroke: strokeColor, opacity: phaseRef.current >= edgePhase ? 1 : 0, transition: 'opacity 0.6s ease' },
+        labelStyle: { fill: '#94a3b8', fontSize: 10, fontWeight: 600, opacity: phaseRef.current >= edgePhase ? 1 : 0 },
+        labelBgStyle: { fill: '#0f172a', fillOpacity: 0.85, rx: 5, ry: 5 },
+        labelBgPadding: [5, 3] as [number, number],
+        markerEnd: { type: MarkerType.ArrowClosed, color: strokeColor, width: 12, height: 12 },
       };
     });
 
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(initialNodes, initialEdges);
-    setNodes(layoutedNodes);
-    setEdges(layoutedEdges);
+    const laid = layoutElements(initialNodes, initialEdges);
+    setNodes(laid);
+    setEdges(initialEdges);
   }, [data, setNodes, setEdges]);
 
+  // Update phase in node/edge data
+  useEffect(() => {
+    setNodes(nds => nds.map(n => ({
+      ...n,
+      data: { ...n.data, phase },
+    })));
+    setEdges(eds => eds.map(e => {
+      const sourceNode = data.nodes.find(n => n.id === e.source);
+      const targetNode = data.nodes.find(n => n.id === e.target);
+      const sourcePhase = sourceNode ? typeOrder.indexOf(sourceNode.type) : 0;
+      const targetPhase = targetNode ? typeOrder.indexOf(targetNode.type) : 0;
+      const edgePhase = Math.max(sourcePhase, targetPhase);
+      const visible = phase >= edgePhase;
+      return {
+        ...e,
+        hidden: !visible,
+        style: { ...e.style, opacity: visible ? 1 : 0 },
+        labelStyle: { ...(e.labelStyle as any), opacity: visible ? 1 : 0 },
+      };
+    }));
+  }, [phase]);
+
   return (
-    <div className="w-full h-full bg-[#0a0e1a]">
+    <div className="w-full h-full bg-[#080c16]">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -166,13 +214,16 @@ export function LiveGraph({ data }: { data: SimulationData }) {
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
+        fitViewOptions={{ padding: 0.25, duration: 600 }}
         minZoom={0.3}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="#1e293b" gap={24} size={1} />
-        <Controls className="!bg-slate-800 !border-slate-700 !rounded-lg [&>button]:!bg-slate-800 [&>button]:!border-slate-700 [&>button]:!fill-slate-400 [&>button:hover]:!bg-slate-700" />
+        <Background color="#1a1f3a" gap={32} size={1} />
+        <Controls
+          position="bottom-right"
+          className="!bg-slate-900/80 !border-slate-700/50 !rounded-lg !shadow-lg [&>button]:!bg-slate-900 [&>button]:!border-slate-700/50 [&>button]:!fill-slate-400 [&>button:hover]:!bg-slate-800 [&>button:hover]:!fill-slate-200"
+        />
       </ReactFlow>
     </div>
   );
