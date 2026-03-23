@@ -4,24 +4,20 @@ import { EventPanel } from './components/EventPanel';
 import { LiveGraph } from './components/LiveGraph';
 import { SummaryPanel } from './components/SummaryPanel';
 import { PriceTrend } from './components/PriceTrend';
-import { PolymarketEvent, PolymarketMarket } from './services/polymarket';
+import { PolymarketMarket, searchEvents } from './services/polymarket';
 import { SimulationData, Variable, Analysis, callLLM, extractJSON, buildPrompts } from './services/llm';
 
 const EMPTY_DATA: SimulationData = {
-  scenarios: [],
-  nodes: [],
-  edges: [],
-  summary: '',
-  coreActions: [],
+  scenarios: [], nodes: [], edges: [], summary: '', coreActions: [],
 };
 
 export default function App() {
-  // Input state
+  // Input
   const [hotspot, setHotspot] = useState('');
   const [variables, setVariables] = useState<Variable[]>([]);
   const [targetAssets, setTargetAssets] = useState('');
 
-  // Analysis state
+  // Analysis
   const [data, setData] = useState<SimulationData>(EMPTY_DATA);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
@@ -32,91 +28,114 @@ export default function App() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
 
-  // Polymarket state
-  const [selectedEvent, setSelectedEvent] = useState<PolymarketEvent | null>(null);
+  // Polymarket (auto-matched after analysis, not the entry point)
+  const [matchedMarkets, setMatchedMarkets] = useState<PolymarketMarket[]>([]);
   const [selectedMarket, setSelectedMarket] = useState<PolymarketMarket | null>(null);
   const [showTrend, setShowTrend] = useState(false);
 
-  // UI state
+  // UI
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const graphRef = useRef<HTMLDivElement>(null);
+  // Auto-match Polymarket markets for the event
+  const matchPolymarkets = useCallback(async (eventText: string) => {
+    try {
+      // Extract key terms from the event for Polymarket search
+      const keywords = eventText
+        .replace(/[，。、！？]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 1)
+        .slice(0, 3)
+        .join(' ');
 
-  const handleSelectEvent = useCallback((event: PolymarketEvent, market: PolymarketMarket) => {
-    setSelectedEvent(event);
-    setSelectedMarket(market);
-    setHotspot(event.title);
-    setShowTrend(true);
+      if (!keywords) return;
+
+      const events = await searchEvents(keywords, 5);
+      const markets = events.flatMap(e => e.markets).slice(0, 6);
+      setMatchedMarkets(markets);
+    } catch {
+      // Polymarket matching is best-effort, don't block on failure
+      setMatchedMarkets([]);
+    }
   }, []);
 
   const getMarketContext = (): string => {
-    if (!selectedMarket) return '';
-    const yesIdx = selectedMarket.outcomes.findIndex(o => o.toLowerCase() === 'yes');
-    const prob = yesIdx >= 0 ? selectedMarket.outcomePrices[yesIdx] : selectedMarket.outcomePrices[0];
-    return `
-【Polymarket 市场数据】
-事件: ${selectedEvent?.title || selectedMarket.question}
-问题: ${selectedMarket.question}
-${selectedMarket.groupItemTitle ? `选项: ${selectedMarket.groupItemTitle}` : ''}
-市场共识概率: ${(prob * 100).toFixed(1)}%
-24h交易量: $${selectedMarket.volume24hr.toLocaleString()}
-${selectedMarket.oneDayPriceChange !== null ? `24h变动: ${(selectedMarket.oneDayPriceChange * 100).toFixed(1)}%` : ''}
+    if (matchedMarkets.length === 0) return '';
 
-请对比你的分析与市场共识，如有分歧请解释原因。`;
+    const marketLines = matchedMarkets.slice(0, 3).map(m => {
+      const yesIdx = m.outcomes.findIndex(o => o.toLowerCase() === 'yes');
+      const prob = yesIdx >= 0 ? m.outcomePrices[yesIdx] : m.outcomePrices[0];
+      return `- "${m.groupItemTitle || m.question}": ${(prob * 100).toFixed(1)}%`;
+    }).join('\n');
+
+    return `
+【Polymarket 预测市场参考数据】
+以下是与该事件相关的预测市场定价（基于真金白银的博弈）：
+${marketLines}
+
+请在分析中参考这些市场共识概率。如果你的判断与市场有显著分歧，请在 divergenceAnalysis 中说明原因。`;
   };
 
-  const runSimulation = useCallback(async (autoMode: boolean) => {
-    if (!hotspot.trim()) { setError('请先输入或选择一个事件'); return; }
+  const runSimulation = useCallback(async () => {
+    if (!hotspot.trim()) { setError('请输入一条事件性新闻'); return; }
 
     setLoading(true);
     setError(null);
     setShouldAnimate(true);
+    setMatchedMarkets([]);
+    setSelectedMarket(null);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90000);
 
     try {
-      setLoadingStep('构建分析框架...');
-      await new Promise(r => setTimeout(r, 300));
+      // Step 1: Match Polymarket data (concurrent with prompt building)
+      setLoadingStep('匹配预测市场数据...');
+      const marketPromise = matchPolymarkets(hotspot);
 
+      // Wait a bit for Polymarket data, but don't block
+      await Promise.race([
+        marketPromise,
+        new Promise(r => setTimeout(r, 3000)),
+      ]);
+
+      // Step 2: Build and send LLM request
+      setLoadingStep('AI 正在分析传导链...');
       const marketContext = getMarketContext();
+      const isAutoMode = !targetAssets.trim();
       const { systemPrompt, userPrompt } = buildPrompts(
-        hotspot, variables, autoMode ? '' : targetAssets,
-        marketContext, !!selectedMarket, autoMode
+        hotspot, variables, targetAssets, marketContext, matchedMarkets.length > 0, isAutoMode,
       );
 
-      setLoadingStep('AI 正在推演因果链...');
       const responseText = await callLLM(systemPrompt, userPrompt, controller.signal);
 
       setLoadingStep('解析推演结果...');
       const parsed = extractJSON(responseText) as SimulationData;
 
       if (!parsed.nodes?.length || !parsed.edges?.length) {
-        throw new Error('AI 返回的数据不完整');
+        throw new Error('AI 返回的数据不完整，请重试');
       }
 
-      // Inject market prob for comparison
-      if (selectedMarket && parsed.scenarios.length > 0) {
-        const yesIdx = selectedMarket.outcomes.findIndex(o => o.toLowerCase() === 'yes');
-        const marketProb = yesIdx >= 0 ? selectedMarket.outcomePrices[yesIdx] : selectedMarket.outcomePrices[0];
-        parsed.scenarios[0].marketProb = marketProb;
+      // Inject market prob into first scenario for comparison
+      if (matchedMarkets.length > 0 && parsed.scenarios.length > 0) {
+        const m = matchedMarkets[0];
+        const yesIdx = m.outcomes.findIndex(o => o.toLowerCase() === 'yes');
+        parsed.scenarios[0].marketProb = yesIdx >= 0 ? m.outcomePrices[yesIdx] : m.outcomePrices[0];
       }
 
-      // If auto-mode returned suggested assets, update the field
-      if (autoMode && parsed.suggestedAssets) {
+      if (isAutoMode && parsed.suggestedAssets) {
         setTargetAssets(parsed.suggestedAssets);
       }
 
       setLoadingStep('渲染传导图...');
       setData(parsed);
 
-      // Save to history
+      // Save history
       const analysis: Analysis = {
         id: crypto.randomUUID(),
         timestamp: Date.now(),
         hotspot,
         data: parsed,
-        eventTitle: selectedEvent?.title,
+        eventTitle: hotspot,
       };
       setAnalyses(prev => [analysis, ...prev]);
       setCurrentIndex(0);
@@ -132,7 +151,7 @@ ${selectedMarket.oneDayPriceChange !== null ? `24h变动: ${(selectedMarket.oneD
       setLoading(false);
       setLoadingStep('');
     }
-  }, [hotspot, variables, targetAssets, selectedEvent, selectedMarket]);
+  }, [hotspot, variables, targetAssets, matchedMarkets, matchPolymarkets]);
 
   const loadAnalysis = useCallback((index: number) => {
     const a = analyses[index];
@@ -145,12 +164,7 @@ ${selectedMarket.oneDayPriceChange !== null ? `24h变动: ${(selectedMarket.oneD
 
   const handleExport = useCallback(() => {
     if (!data.nodes.length) return;
-    const exportData = {
-      hotspot,
-      timestamp: new Date().toISOString(),
-      ...data,
-    };
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ hotspot, timestamp: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -158,6 +172,11 @@ ${selectedMarket.oneDayPriceChange !== null ? `24h变动: ${(selectedMarket.oneD
     a.click();
     URL.revokeObjectURL(url);
   }, [data, hotspot]);
+
+  const handleSelectMarket = useCallback((m: PolymarketMarket) => {
+    setSelectedMarket(m);
+    setShowTrend(true);
+  }, []);
 
   const trendTokenId = selectedMarket?.clobTokenIds?.[0] || null;
   const trendTitle = selectedMarket?.groupItemTitle || selectedMarket?.question || '';
@@ -187,13 +206,13 @@ ${selectedMarket.oneDayPriceChange !== null ? `24h变动: ${(selectedMarket.oneD
           scenarios={data.scenarios}
           onRun={runSimulation}
           loading={loading}
-          onSelectEvent={handleSelectEvent}
-          selectedMarketId={selectedMarket?.id}
           isOpen={sidebarOpen}
+          matchedMarkets={matchedMarkets}
+          onSelectMarket={handleSelectMarket}
+          selectedMarketId={selectedMarket?.id}
         />
 
-        <main className="flex-1 flex flex-col relative overflow-hidden" ref={graphRef}>
-          {/* Error toast */}
+        <main className="flex-1 flex flex-col relative overflow-hidden">
           {error && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm flex items-center gap-3 backdrop-blur-md">
               <span>{error}</span>
@@ -203,36 +222,38 @@ ${selectedMarket.oneDayPriceChange !== null ? `24h变动: ${(selectedMarket.oneD
 
           {/* Empty state */}
           {!hasData && !loading && (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-4">
-              <div className="text-5xl opacity-20">🌍</div>
-              <div className="text-center">
-                <p className="text-lg font-semibold text-slate-400">选择一个事件，开始分析</p>
-                <p className="text-sm mt-2 max-w-sm text-slate-600">
-                  从左侧 Polymarket 热门事件中选择，或直接输入事件描述，一键生成因果传导图
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-5">
+              <div className="text-5xl opacity-15">📰</div>
+              <div className="text-center max-w-md">
+                <p className="text-lg font-semibold text-slate-400">输入一条新闻，看它如何传导到市场</p>
+                <p className="text-sm mt-2 text-slate-600 leading-relaxed">
+                  输入事件性新闻 → AI 分析因果传导链 → 自动匹配 Polymarket 概率 → 生成可视化决策图
                 </p>
               </div>
             </div>
           )}
 
-          {/* Graph + Trend */}
-          {(hasData || loading) && (
-            <div className={`flex-1 flex flex-col`}>
-              <div className={`flex-1 min-h-0 ${showTrend && selectedMarket ? '' : ''}`}>
-                {hasData && <LiveGraph data={data} animate={shouldAnimate} />}
-                {loading && !hasData && (
-                  <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center space-y-4">
-                      <div className="flex gap-1.5 justify-center">
-                        {['bg-red-500', 'bg-amber-500', 'bg-orange-500', 'bg-emerald-500'].map((c, i) => (
-                          <div key={i} className={`w-2.5 h-2.5 rounded-full ${c} animate-pulse`} style={{ animationDelay: `${i * 200}ms` }} />
-                        ))}
-                      </div>
-                      <p className="text-sm text-slate-400">{loadingStep}</p>
-                    </div>
-                  </div>
-                )}
+          {/* Loading state */}
+          {loading && !hasData && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center space-y-4">
+                <div className="flex gap-1.5 justify-center">
+                  {['bg-red-500', 'bg-amber-500', 'bg-orange-500', 'bg-emerald-500'].map((c, i) => (
+                    <div key={i} className={`w-2.5 h-2.5 rounded-full ${c} animate-pulse`} style={{ animationDelay: `${i * 200}ms` }} />
+                  ))}
+                </div>
+                <p className="text-sm text-slate-400">{loadingStep}</p>
               </div>
-              {showTrend && selectedMarket && hasData && (
+            </div>
+          )}
+
+          {/* Graph + Trend */}
+          {hasData && (
+            <div className="flex-1 flex flex-col">
+              <div className="flex-1 min-h-0">
+                <LiveGraph data={data} animate={shouldAnimate} />
+              </div>
+              {showTrend && selectedMarket && (
                 <div className="h-[200px] p-3 border-t border-slate-800/50 bg-[#0a0e1a]">
                   <PriceTrend tokenId={trendTokenId} marketTitle={trendTitle} />
                 </div>
@@ -240,13 +261,13 @@ ${selectedMarket.oneDayPriceChange !== null ? `24h变动: ${(selectedMarket.oneD
             </div>
           )}
 
-          {/* Summary panel */}
+          {/* Summary */}
           {hasData && !loading && (
             <SummaryPanel
               summary={data.summary}
               actions={data.coreActions}
               divergenceAnalysis={data.divergenceAnalysis}
-              hasMarketData={!!selectedMarket}
+              hasMarketData={matchedMarkets.length > 0}
               showTrend={showTrend && !!selectedMarket}
               onToggleTrend={() => setShowTrend(!showTrend)}
               hasTrendData={!!selectedMarket}
