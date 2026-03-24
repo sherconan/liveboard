@@ -1,49 +1,53 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { Newspaper, Sparkles } from 'lucide-react';
 import { Header } from './components/Header';
 import { EventPanel } from './components/EventPanel';
 import { LiveGraph } from './components/LiveGraph';
 import { SummaryPanel } from './components/SummaryPanel';
-import { PriceTrend } from './components/PriceTrend';
+import { MarketPulse } from './components/MarketPulse';
 import { PolymarketMarket, searchEvents } from './services/polymarket';
-import { SimulationData, Variable, Analysis, callLLM, extractJSON, buildPrompts } from './services/llm';
+import { SimulationData, Variable, Analysis, callLLM, extractJSON, buildLayer1Prompt, buildLayer2Prompt, buildLayer3Prompt, buildInsightPrompt } from './services/llm';
+import { SwarmResult, runSwarmAnalysis } from './services/swarm';
 
 const EMPTY_DATA: SimulationData = {
   scenarios: [], nodes: [], edges: [], summary: '', coreActions: [],
 };
 
 export default function App() {
-  // Input
   const [hotspot, setHotspot] = useState('');
   const [variables, setVariables] = useState<Variable[]>([]);
   const [targetAssets, setTargetAssets] = useState('');
-
-  // Analysis
   const [data, setData] = useState<SimulationData>(EMPTY_DATA);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [shouldAnimate, setShouldAnimate] = useState(false);
-
-  // History
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
-
-  // Polymarket (auto-matched after analysis, not the entry point)
   const [matchedMarkets, setMatchedMarkets] = useState<PolymarketMarket[]>([]);
   const [selectedMarket, setSelectedMarket] = useState<PolymarketMarket | null>(null);
-  const [showTrend, setShowTrend] = useState(false);
-
-  // UI
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [analyzedHotspot, setAnalyzedHotspot] = useState('');
+  const [swarmResult, setSwarmResult] = useState<SwarmResult | null>(null);
+  const [swarmLoading, setSwarmLoading] = useState(false);
 
-  // Search Polymarket using AI-generated English queries
+  // When user picks a different news, clear old results
+  const handleSetHotspot = useCallback((val: string) => {
+    setHotspot(val);
+    if (val !== analyzedHotspot) {
+      setData(EMPTY_DATA);
+      setMatchedMarkets([]);
+      setSelectedMarket(null);
+      setSwarmResult(null);
+      setError(null);
+    }
+  }, [analyzedHotspot]);
+
   const matchPolymarkets = useCallback(async (queries: string[]) => {
     if (!queries?.length) return;
     try {
       const allMarkets: PolymarketMarket[] = [];
       const seen = new Set<string>();
-
-      // Search with each query, deduplicate
       for (const query of queries.slice(0, 4)) {
         try {
           const events = await searchEvents(query, 5);
@@ -57,8 +61,6 @@ export default function App() {
           }
         } catch {}
       }
-
-      // Sort by volume (most liquid = most reliable) and take top 6
       allMarkets.sort((a, b) => b.volume24hr - a.volume24hr);
       setMatchedMarkets(allMarkets.slice(0, 6));
     } catch {
@@ -66,74 +68,111 @@ export default function App() {
     }
   }, []);
 
+  // Helper: truncate node labels
+  const normNodes = (nodes: any[]) => nodes.map((n: any) => ({
+    ...n, label: n.label?.length > 10 ? n.label.slice(0, 10) : (n.label || ''),
+  }));
+
   const runSimulation = useCallback(async () => {
     if (!hotspot.trim()) { setError('请输入一条事件性新闻'); return; }
-
     setLoading(true);
     setError(null);
     setShouldAnimate(true);
     setMatchedMarkets([]);
     setSelectedMarket(null);
+    setSwarmResult(null);
+    setSwarmLoading(true);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+    const timeout = setTimeout(() => controller.abort(), 180000);
+
+    // ── Launch swarm in parallel (streams each agent as it finishes) ──
+    runSwarmAnalysis(hotspot, controller.signal, (partial) => setSwarmResult(partial))
+      .then(result => setSwarmResult(result))
+      .catch(() => {})
+      .finally(() => setSwarmLoading(false));
+
+    // Accumulate nodes/edges across layers
+    let allNodes: any[] = [];
+    let allEdges: any[] = [];
+    let pmQueries: string[] = [];
+    let sugAssets = '';
+
+    const pushGraph = (newNodes: any[], newEdges: any[]) => {
+      allNodes = [...allNodes, ...normNodes(newNodes)];
+      allEdges = [...allEdges, ...newEdges];
+      setData({
+        scenarios: [],
+        nodes: allNodes,
+        edges: allEdges,
+        summary: '',
+        coreActions: [],
+        suggestedAssets: sugAssets,
+        polymarketQueries: pmQueries,
+      });
+    };
 
     try {
-      // Step 1: AI analysis (generates transmission chain + Polymarket search queries)
-      setLoadingStep('AI 正在分析传导链...');
-      const isAutoMode = !targetAssets.trim();
-      const { systemPrompt, userPrompt } = buildPrompts(
-        hotspot, variables, targetAssets, '', false, isAutoMode,
-      );
+      // ── Layer 0+1: Hotspot + Variables (~3-5s) ──
+      setLoadingStep('识别事件与变量...');
+      const { system: s1, user: u1 } = buildLayer1Prompt(hotspot, variables);
+      const r1 = extractJSON(await callLLM(s1, u1, controller.signal, 0));
 
-      const responseText = await callLLM(systemPrompt, userPrompt, controller.signal);
+      if (r1.polymarketQueries) pmQueries = r1.polymarketQueries;
+      pushGraph(r1.nodes || [], r1.edges || []);
+      setAnalyzedHotspot(hotspot);
+      setLoading(false); // ← graph visible now!
 
-      setLoadingStep('解析推演结果...');
-      const parsed = extractJSON(responseText) as SimulationData;
+      // Fire Polymarket in background
+      if (pmQueries.length) matchPolymarkets(pmQueries);
 
-      if (!parsed.nodes?.length || !parsed.edges?.length) {
-        throw new Error('AI 返回数据不完整，请重试');
+      // ── Layer 2: Impacts (~3-5s) ──
+      setLoadingStep('推导传导效应...');
+      const { system: s2, user: u2 } = buildLayer2Prompt(hotspot, allNodes);
+      const r2 = extractJSON(await callLLM(s2, u2, controller.signal, 0));
+      pushGraph(r2.nodes || [], r2.edges || []);
+
+      // ── Layer 3: Assets (~3-5s) ──
+      setLoadingStep('确定受影响标的...');
+      const { system: s3, user: u3 } = buildLayer3Prompt(hotspot, allNodes, targetAssets);
+      const r3 = extractJSON(await callLLM(s3, u3, controller.signal, 0));
+      if (r3.suggestedAssets) {
+        sugAssets = r3.suggestedAssets;
+        setTargetAssets(sugAssets);
+      }
+      pushGraph(r3.nodes || [], r3.edges || []);
+
+      // ── Final: Trading insight (~3-5s) ──
+      setLoadingStep('生成交易判断...');
+      const { system: s4, user: u4 } = buildInsightPrompt(hotspot, allNodes, allEdges);
+      const r4 = extractJSON(await callLLM(s4, u4, controller.signal, 0));
+
+      let summary = r4.summary || '';
+      if (summary.length > 50) {
+        const t = summary.slice(0, 50);
+        const lp = Math.max(t.lastIndexOf('，'), t.lastIndexOf('。'), t.lastIndexOf('！'), t.lastIndexOf('、'));
+        summary = lp > 20 ? t.slice(0, lp + 1) : t;
       }
 
-      if (isAutoMode && parsed.suggestedAssets) {
-        setTargetAssets(parsed.suggestedAssets);
-      }
-
-      // Step 2: Use AI-generated queries to search Polymarket (non-blocking)
-      setLoadingStep('匹配 Polymarket 预测市场...');
-      if (parsed.polymarketQueries?.length) {
-        // Fire and forget - don't block rendering for Polymarket
-        matchPolymarkets(parsed.polymarketQueries).then(() => {
-          // After Polymarket data arrives, we could re-inject probabilities
-          // but for now, just show them in the sidebar
-        });
-      }
-
-      // Post-processing: enforce quality constraints the LLM might miss
-      if (parsed.summary && parsed.summary.length > 50) {
-        // Truncate at last punctuation within limit
-        const truncated = parsed.summary.slice(0, 50);
-        const lastPunc = Math.max(truncated.lastIndexOf('，'), truncated.lastIndexOf('。'), truncated.lastIndexOf('！'), truncated.lastIndexOf('、'));
-        parsed.summary = lastPunc > 20 ? truncated.slice(0, lastPunc + 1) : truncated;
-      }
-      // Ensure node labels are short
-      parsed.nodes = parsed.nodes.map(n => ({
-        ...n,
-        label: n.label.length > 10 ? n.label.slice(0, 10) : n.label,
-      }));
-
-      setLoadingStep('渲染传导图...');
-      setData(parsed);
+      const fullData: SimulationData = {
+        scenarios: r4.scenarios || [],
+        nodes: allNodes,
+        edges: allEdges,
+        summary,
+        coreActions: r4.coreActions || [],
+        suggestedAssets: sugAssets,
+        polymarketQueries: pmQueries,
+      };
+      setData(fullData);
 
       // Save history
-      const analysis: Analysis = {
+      setAnalyses(prev => [{
         id: crypto.randomUUID(),
         timestamp: Date.now(),
         hotspot,
-        data: parsed,
+        data: fullData,
         eventTitle: hotspot,
-      };
-      setAnalyses(prev => [analysis, ...prev]);
+      }, ...prev]);
       setCurrentIndex(0);
 
     } catch (err: any) {
@@ -155,6 +194,7 @@ export default function App() {
     setCurrentIndex(index);
     setData(a.data);
     setHotspot(a.hotspot);
+    setAnalyzedHotspot(a.hotspot);
     setShouldAnimate(false);
   }, [analyses]);
 
@@ -171,15 +211,12 @@ export default function App() {
 
   const handleSelectMarket = useCallback((m: PolymarketMarket) => {
     setSelectedMarket(m);
-    setShowTrend(true);
   }, []);
 
-  const trendTokenId = selectedMarket?.clobTokenIds?.[0] || null;
-  const trendTitle = selectedMarket?.groupItemTitle || selectedMarket?.question || '';
   const hasData = data.nodes.length > 0;
 
   return (
-    <div className="flex flex-col h-screen bg-[#080c16] text-slate-100 font-sans overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
       <Header
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
@@ -194,118 +231,102 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         <EventPanel
           hotspot={hotspot}
-          setHotspot={setHotspot}
-          variables={variables}
-          setVariables={setVariables}
-          targetAssets={targetAssets}
-          setTargetAssets={setTargetAssets}
-          scenarios={data.scenarios}
+          setHotspot={handleSetHotspot}
           onRun={runSimulation}
           loading={loading}
           isOpen={sidebarOpen}
-          matchedMarkets={matchedMarkets}
-          onSelectMarket={handleSelectMarket}
-          selectedMarketId={selectedMarket?.id}
+          hasAnalysis={hasData}
+          analyzedHotspot={analyzedHotspot}
         />
 
         <main className="flex-1 flex flex-col relative overflow-hidden">
           {error && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm flex items-center gap-3 backdrop-blur-md">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm flex items-center gap-3 backdrop-blur-md"
+              style={{ background: 'var(--danger-soft)', border: '1px solid var(--danger)', color: 'var(--danger)' }}
+            >
               <span>{error}</span>
-              <button onClick={() => setError(null)} className="text-red-400/60 hover:text-red-300 text-lg leading-none">&times;</button>
+              <button onClick={() => setError(null)} className="opacity-60 hover:opacity-100 text-lg leading-none">&times;</button>
             </div>
           )}
 
           {/* Empty state */}
           {!hasData && !loading && (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-5">
-              <div className="text-5xl opacity-15">📰</div>
+            <div className="flex-1 flex flex-col items-center justify-center gap-5">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 flex items-center justify-center">
+                <Newspaper className="w-7 h-7 text-blue-500/50" />
+              </div>
               <div className="text-center max-w-md">
-                <p className="text-lg font-semibold text-slate-400">输入一条新闻，看它如何传导到市场</p>
-                <p className="text-sm mt-2 text-slate-600 leading-relaxed">
-                  输入事件性新闻 → AI 分析因果传导链 → 自动匹配 Polymarket 概率 → 生成可视化决策图
+                <p className="text-lg font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                  从左侧选择一条新闻开始分析
+                </p>
+                <p className="text-sm mt-2 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                  选择实时新闻 → AI 分析因果传导链 → 生成决策图
                 </p>
               </div>
             </div>
           )}
 
-          {/* Loading overlay — always visible when loading */}
-          {loading && (
-            <div className="absolute inset-0 z-40 bg-[#080c16]/90 backdrop-blur-sm flex items-center justify-center">
+          {/* Loading overlay — only shows before graph appears */}
+          {loading && !hasData && (
+            <div className="absolute inset-0 z-40 backdrop-blur-sm flex items-center justify-center" style={{ background: 'var(--bg-overlay)' }}>
               <div className="text-center space-y-6 max-w-md">
-                {/* Animated graph icon */}
-                <div className="relative mx-auto w-20 h-20">
-                  <div className="absolute inset-0 rounded-full border-2 border-red-500/20 animate-ping" />
-                  <div className="absolute inset-2 rounded-full border-2 border-amber-500/30 animate-ping [animation-delay:400ms]" />
-                  <div className="absolute inset-4 rounded-full border-2 border-emerald-500/30 animate-ping [animation-delay:800ms]" />
-                  <div className="absolute inset-0 flex items-center justify-center text-3xl">🔍</div>
+                <div className="relative mx-auto w-16 h-16">
+                  <div className="absolute inset-0 rounded-full border-2 border-blue-500/20 animate-ping" />
+                  <div className="absolute inset-2 rounded-full border-2 border-indigo-500/30 animate-ping [animation-delay:400ms]" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Sparkles className="w-6 h-6 text-blue-500" />
+                  </div>
                 </div>
-
-                {/* Step text */}
                 <div>
-                  <p className="text-lg font-semibold text-slate-200">{loadingStep || '准备中...'}</p>
-                  <p className="text-xs text-slate-500 mt-2">通过 Claude 分析，通常需要 15-30 秒</p>
+                  <p className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{loadingStep || '准备中...'}</p>
+                  <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>通过 Claude 分析，通常需要 15-30 秒</p>
                 </div>
-
-                {/* Step indicators */}
-                <div className="flex flex-col gap-2 text-left mx-auto w-64">
-                  {[
-                    { key: '分析', label: 'AI 推演因果传导链' },
-                    { key: '解析', label: '解析结构化结果' },
-                    { key: 'Polymarket', label: '匹配 Polymarket 市场' },
-                    { key: '渲染', label: '渲染传导图' },
-                  ].map((step, i) => {
-                    const isActive = loadingStep.includes(step.key);
-                    const isPast = loadingStep && !isActive &&
-                      ['匹配', '分析', '解析', '渲染'].indexOf(step.key) <
-                      ['匹配', '分析', '解析', '渲染'].findIndex(k => loadingStep.includes(k));
-                    return (
-                      <div key={i} className={`flex items-center gap-3 text-sm transition-all duration-300 ${isActive ? 'text-slate-200' : isPast ? 'text-slate-500' : 'text-slate-700'}`}>
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                          isActive ? 'bg-red-500/20 text-red-400 ring-2 ring-red-500/30' :
-                          isPast ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-600'
-                        }`}>
-                          {isPast ? '✓' : i + 1}
-                        </div>
-                        <span>{step.label}</span>
-                        {isActive && <span className="text-red-400 animate-pulse text-xs">●</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Event being analyzed */}
-                <div className="text-xs text-slate-600 bg-slate-800/50 rounded-lg px-4 py-2 mx-auto max-w-xs truncate">
-                  📰 {hotspot}
+                <div className="text-xs rounded-lg px-4 py-2 mx-auto max-w-xs truncate"
+                  style={{ background: 'var(--bg-input)', color: 'var(--text-muted)' }}
+                >
+                  {hotspot}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Graph + Trend */}
+          {/* Graph + Market Pulse right panel */}
           {hasData && (
-            <div className="flex-1 flex flex-col">
-              <div className="flex-1 min-h-0">
+            <div className="flex-1 flex min-h-0">
+              <div className="flex-1 min-w-0 relative">
                 <LiveGraph data={data} animate={shouldAnimate} />
+                {/* Step 2 indicator — shows while generating insights after graph is visible */}
+                {loadingStep && !loading && (
+                  <div
+                    className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md text-xs font-medium"
+                    style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border)', color: 'var(--accent)' }}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                    {loadingStep}
+                  </div>
+                )}
               </div>
-              {showTrend && selectedMarket && (
-                <div className="h-[200px] p-3 border-t border-slate-800/50 bg-[#0a0e1a]">
-                  <PriceTrend tokenId={trendTokenId} marketTitle={trendTitle} />
-                </div>
-              )}
+
+              {/* Right panel — always visible when analysis exists */}
+              <MarketPulse
+                matchedMarkets={matchedMarkets}
+                selectedMarket={selectedMarket}
+                onSelectMarket={handleSelectMarket}
+                polymarketQueries={data.polymarketQueries || []}
+                suggestedAssets={data.suggestedAssets || targetAssets}
+              />
             </div>
           )}
 
-          {/* Summary */}
+          {/* Summary panel at bottom */}
           {hasData && !loading && (
             <SummaryPanel
               summary={data.summary}
               actions={data.coreActions}
               divergenceAnalysis={data.divergenceAnalysis}
               hasMarketData={matchedMarkets.length > 0}
-              showTrend={showTrend && !!selectedMarket}
-              onToggleTrend={() => setShowTrend(!showTrend)}
-              hasTrendData={!!selectedMarket}
+              swarmResult={swarmResult}
+              swarmLoading={swarmLoading}
             />
           )}
         </main>

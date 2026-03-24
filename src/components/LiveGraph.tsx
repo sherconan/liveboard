@@ -14,7 +14,8 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import dagre from '@dagrejs/dagre';
 import { SimulationData } from '../services/llm';
-import { AlertCircle, TrendingDown, TrendingUp, Minus, Zap, Activity, Globe } from 'lucide-react';
+import { TrendingDown, TrendingUp, Minus, Zap, Activity, Globe } from 'lucide-react';
+import { useTheme } from '../theme';
 
 const typeOrder = ['hotspot', 'variable', 'impact', 'asset'];
 
@@ -25,67 +26,78 @@ const typeLabels: Record<string, string> = {
   asset: '受影标的',
 };
 
-const typeStyles: Record<string, { bg: string; border: string; glow: string; iconBg: string }> = {
-  hotspot:  { bg: 'bg-red-950/70',   border: 'border-red-500/40',   glow: 'shadow-[0_0_20px_rgba(239,68,68,0.15)]', iconBg: 'bg-red-500/20' },
-  variable: { bg: 'bg-amber-950/70',  border: 'border-amber-500/40', glow: '', iconBg: 'bg-amber-500/20' },
-  impact:   { bg: 'bg-orange-950/70', border: 'border-orange-500/40',glow: '', iconBg: 'bg-orange-500/20' },
-  asset:    { bg: 'bg-slate-800/80',  border: 'border-slate-600/40', glow: '', iconBg: 'bg-slate-600/30' },
-};
-
-const sentimentStyle: Record<string, { bg: string; border: string; iconBg: string }> = {
-  positive: { bg: 'bg-emerald-950/70', border: 'border-emerald-500/40', iconBg: 'bg-emerald-500/20' },
-  negative: { bg: 'bg-red-950/70',     border: 'border-red-500/40',     iconBg: 'bg-red-500/20' },
-  neutral:  { bg: 'bg-slate-800/80',   border: 'border-slate-600/40',   iconBg: 'bg-slate-600/30' },
-};
-
 function getIcon(type: string, sentiment?: string) {
-  if (type === 'hotspot') return <Globe className="w-4 h-4 text-red-400" />;
-  if (type === 'variable') return <Zap className="w-4 h-4 text-amber-400" />;
-  if (type === 'impact') return <Activity className="w-4 h-4 text-orange-400" />;
-  if (sentiment === 'positive') return <TrendingUp className="w-4 h-4 text-emerald-400" />;
-  if (sentiment === 'negative') return <TrendingDown className="w-4 h-4 text-red-400" />;
-  return <Minus className="w-4 h-4 text-slate-400" />;
+  if (type === 'hotspot') return <Globe className="w-4 h-4 text-red-500" />;
+  if (type === 'variable') return <Zap className="w-4 h-4 text-amber-500" />;
+  if (type === 'impact') return <Activity className="w-4 h-4 text-orange-500" />;
+  if (sentiment === 'positive') return <TrendingUp className="w-4 h-4 text-emerald-500" />;
+  if (sentiment === 'negative') return <TrendingDown className="w-4 h-4 text-red-500" />;
+  return <Minus className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />;
+}
+
+function getNodeStyle(type: string, sentiment?: string) {
+  const map: Record<string, { bg: string; border: string; iconBg: string }> = {
+    hotspot:  { bg: 'var(--node-hotspot-bg)',  border: 'var(--node-hotspot-border)',  iconBg: 'rgba(239,68,68,0.15)' },
+    variable: { bg: 'var(--node-variable-bg)',  border: 'var(--node-variable-border)', iconBg: 'rgba(245,158,11,0.15)' },
+    impact:   { bg: 'var(--node-impact-bg)',    border: 'var(--node-impact-border)',   iconBg: 'rgba(249,115,22,0.15)' },
+    asset:    { bg: 'var(--node-asset-bg)',      border: 'var(--node-asset-border)',    iconBg: 'rgba(100,116,139,0.15)' },
+  };
+  let style = map[type] || map.asset;
+  if (type === 'asset' && sentiment === 'positive') {
+    style = { bg: 'var(--node-positive-bg)', border: 'var(--node-positive-border)', iconBg: 'rgba(34,197,94,0.15)' };
+  } else if (type === 'asset' && sentiment === 'negative') {
+    style = { bg: 'var(--node-negative-bg)', border: 'var(--node-negative-border)', iconBg: 'rgba(239,68,68,0.15)' };
+  }
+  return style;
 }
 
 const CustomNode = ({ data }: NodeProps) => {
   const { label, type, sentiment, phase, nodePhase, detail } = data;
   const typeLabel = typeLabels[type] || type;
-
-  let style = typeStyles[type] || typeStyles.asset;
-  if (type === 'asset' && sentiment) {
-    const ss = sentimentStyle[sentiment] || sentimentStyle.neutral;
-    style = { ...style, ...ss };
-  }
-
+  const style = getNodeStyle(type, sentiment);
   const visible = phase >= nodePhase;
   const appearing = phase === nodePhase;
 
   return (
     <div
-      className={`
-        group relative px-4 py-3 rounded-xl border backdrop-blur-md flex items-center gap-3
+      className={`group relative px-4 py-3 rounded-xl flex items-center gap-3
         min-w-[160px] max-w-[240px]
-        ${style.bg} ${style.border} ${style.glow}
         transition-all duration-700 ease-out
         ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}
-        ${appearing ? 'ring-1 ring-white/10' : ''}
+        ${appearing ? 'ring-1 ring-blue-500/20' : ''}
       `}
+      style={{
+        background: style.bg,
+        border: `1px solid ${style.border}`,
+        backdropFilter: 'blur(8px)',
+      }}
     >
-      <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-slate-500 !border-0 !opacity-0" />
-      <div className={`p-1.5 rounded-lg shrink-0 ${style.iconBg}`}>
+      <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-transparent !border-0 !opacity-0" />
+      <div className="p-1.5 rounded-lg shrink-0" style={{ background: style.iconBg }}>
         {getIcon(type, sentiment)}
       </div>
       <div className="flex flex-col min-w-0">
-        <span className="text-[9px] uppercase tracking-widest opacity-40 font-bold text-slate-300">{typeLabel}</span>
-        <span className="text-[13px] font-medium leading-tight mt-0.5 text-slate-100 break-words">{label}</span>
+        <span className="text-[9px] uppercase tracking-widest font-bold" style={{ color: 'var(--node-label)', opacity: 0.6 }}>
+          {typeLabel}
+        </span>
+        <span className="text-[13px] font-medium leading-tight mt-0.5 break-words" style={{ color: 'var(--node-text)' }}>
+          {label}
+        </span>
       </div>
-      {/* Tooltip on hover */}
       {detail && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-[11px] text-slate-300 leading-relaxed max-w-[280px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+        <div
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded-lg text-[11px] leading-relaxed max-w-[280px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+          style={{
+            background: 'var(--tooltip-bg)',
+            border: `1px solid ${('var(--tooltip-border)')}`,
+            color: 'var(--tooltip-text)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
+        >
           {detail}
         </div>
       )}
-      <Handle type="source" position={Position.Bottom} className="w-2 h-2 !bg-slate-500 !border-0 !opacity-0" />
+      <Handle type="source" position={Position.Bottom} className="w-2 h-2 !bg-transparent !border-0 !opacity-0" />
     </div>
   );
 };
@@ -113,23 +125,22 @@ interface LiveGraphProps {
 }
 
 export function LiveGraph({ data, animate = false }: LiveGraphProps) {
+  const { isDark } = useTheme();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [phase, setPhase] = useState(animate ? -1 : 4);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
-  // Reset phase when data changes
   useEffect(() => {
     if (animate) {
       setPhase(-1);
-      // Start animation sequence
       const timers = [
-        setTimeout(() => setPhase(0), 300),   // hotspots
-        setTimeout(() => setPhase(1), 800),   // variables
-        setTimeout(() => setPhase(2), 1400),  // impacts
-        setTimeout(() => setPhase(3), 2000),  // assets
-        setTimeout(() => setPhase(4), 2600),  // all edges visible
+        setTimeout(() => setPhase(0), 300),
+        setTimeout(() => setPhase(1), 800),
+        setTimeout(() => setPhase(2), 1400),
+        setTimeout(() => setPhase(3), 2000),
+        setTimeout(() => setPhase(4), 2600),
       ];
       return () => timers.forEach(clearTimeout);
     } else {
@@ -143,6 +154,9 @@ export function LiveGraph({ data, animate = false }: LiveGraphProps) {
       nodePhaseMap[n.id] = typeOrder.indexOf(n.type);
       if (nodePhaseMap[n.id] === -1) nodePhaseMap[n.id] = 3;
     });
+
+    const edgeLabelBg = isDark ? '#0f172a' : '#ffffff';
+    const edgeLabelColor = isDark ? '#94a3b8' : '#64748b';
 
     const initialNodes: Node[] = data.nodes.map(n => ({
       id: n.id,
@@ -160,11 +174,11 @@ export function LiveGraph({ data, animate = false }: LiveGraphProps) {
 
     const initialEdges: Edge[] = data.edges.map((e, i) => {
       let strokeWidth = 1.5;
-      let strokeColor = '#334155';
+      let strokeColor = isDark ? '#334155' : '#cbd5e1';
       let animated = false;
       if (e.weight === 'critical') { strokeWidth = 2.5; strokeColor = '#ef4444'; animated = true; }
       else if (e.weight === 'high') { strokeWidth = 2; strokeColor = '#f59e0b'; }
-      else if (e.weight === 'medium') { strokeWidth = 1.5; strokeColor = '#475569'; }
+      else if (e.weight === 'medium') { strokeWidth = 1.5; strokeColor = isDark ? '#475569' : '#94a3b8'; }
 
       const sourcePhase = nodePhaseMap[e.source] ?? 0;
       const targetPhase = nodePhaseMap[e.target] ?? 0;
@@ -178,8 +192,8 @@ export function LiveGraph({ data, animate = false }: LiveGraphProps) {
         animated,
         hidden: phaseRef.current < edgePhase,
         style: { strokeWidth, stroke: strokeColor, opacity: phaseRef.current >= edgePhase ? 1 : 0, transition: 'opacity 0.6s ease' },
-        labelStyle: { fill: '#94a3b8', fontSize: 10, fontWeight: 600, opacity: phaseRef.current >= edgePhase ? 1 : 0 },
-        labelBgStyle: { fill: '#0f172a', fillOpacity: 0.85, rx: 5, ry: 5 },
+        labelStyle: { fill: edgeLabelColor, fontSize: 10, fontWeight: 600, opacity: phaseRef.current >= edgePhase ? 1 : 0 },
+        labelBgStyle: { fill: edgeLabelBg, fillOpacity: 0.9, rx: 5, ry: 5 },
         labelBgPadding: [5, 3] as [number, number],
         markerEnd: { type: MarkerType.ArrowClosed, color: strokeColor, width: 12, height: 12 },
       };
@@ -188,9 +202,8 @@ export function LiveGraph({ data, animate = false }: LiveGraphProps) {
     const laid = layoutElements(initialNodes, initialEdges);
     setNodes(laid);
     setEdges(initialEdges);
-  }, [data, setNodes, setEdges]);
+  }, [data, setNodes, setEdges, isDark]);
 
-  // Update phase in node/edge data
   useEffect(() => {
     setNodes(nds => nds.map(n => ({
       ...n,
@@ -212,8 +225,10 @@ export function LiveGraph({ data, animate = false }: LiveGraphProps) {
     }));
   }, [phase]);
 
+  const graphDotColor = isDark ? '#1a1f3a' : '#e2e8f0';
+
   return (
-    <div className="w-full h-full bg-[#080c16]">
+    <div className="w-full h-full" style={{ background: 'var(--bg-graph)' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -226,10 +241,13 @@ export function LiveGraph({ data, animate = false }: LiveGraphProps) {
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="#1a1f3a" gap={32} size={1} />
+        <Background color={graphDotColor} gap={32} size={1} />
         <Controls
           position="bottom-right"
-          className="!bg-slate-900/80 !border-slate-700/50 !rounded-lg !shadow-lg [&>button]:!bg-slate-900 [&>button]:!border-slate-700/50 [&>button]:!fill-slate-400 [&>button:hover]:!bg-slate-800 [&>button:hover]:!fill-slate-200"
+          className={isDark
+            ? '!bg-slate-900/80 !border-slate-700/50 !rounded-lg !shadow-lg [&>button]:!bg-slate-900 [&>button]:!border-slate-700/50 [&>button]:!fill-slate-400 [&>button:hover]:!bg-slate-800 [&>button:hover]:!fill-slate-200'
+            : '!bg-white/90 !border-slate-200 !rounded-lg !shadow-md [&>button]:!bg-white [&>button]:!border-slate-200 [&>button]:!fill-slate-500 [&>button:hover]:!bg-slate-50 [&>button:hover]:!fill-slate-700'
+          }
         />
       </ReactFlow>
     </div>

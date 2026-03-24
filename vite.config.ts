@@ -35,6 +35,38 @@ export default defineConfig(({mode}) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/llm/, ''),
         },
+        '/api/wscn': {
+          target: 'https://api-one.wallstcn.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/wscn/, ''),
+          headers: {
+            'Referer': 'https://wallstreetcn.com/',
+          },
+        },
+        '/api/sina': {
+          target: 'https://feed.mix.sina.com.cn',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/sina/, ''),
+          headers: {
+            'Referer': 'https://finance.sina.com.cn/',
+          },
+        },
+        '/api/reddit': {
+          target: 'https://www.reddit.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/reddit/, ''),
+          headers: {
+            'User-Agent': 'LiveBoard/1.0',
+          },
+        },
+        '/api/stocktwits': {
+          target: 'https://api.stocktwits.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/stocktwits/, ''),
+          headers: {
+            'User-Agent': 'LiveBoard/1.0',
+          },
+        },
       },
     },
   };

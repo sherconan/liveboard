@@ -1,1 +1,124 @@
 @import "tailwindcss";
+
+:root,
+[data-theme="light"] {
+  --bg-page: #f3f5f9;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-header: #ffffff;
+  --bg-input: #f1f5f9;
+  --bg-hover: #f8fafc;
+  --bg-active: #eff6ff;
+  --bg-graph: #f8fafc;
+  --bg-overlay: rgba(255,255,255,0.92);
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #f1f5f9;
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.08);
+  --accent: #3b82f6;
+  --accent-soft: #eff6ff;
+  --danger: #ef4444;
+  --danger-soft: #fef2f2;
+  --success: #22c55e;
+  --success-soft: #f0fdf4;
+  --warning: #f59e0b;
+  --warning-soft: #fffbeb;
+  --news-bg: #ffffff;
+  --news-hover: #f8fafc;
+  --news-selected: #eff6ff;
+  --news-border: #e2e8f0;
+  --news-important-bg: #fef2f2;
+  --node-hotspot-bg: #fef2f2;
+  --node-hotspot-border: #fca5a5;
+  --node-variable-bg: #fffbeb;
+  --node-variable-border: #fcd34d;
+  --node-impact-bg: #fff7ed;
+  --node-impact-border: #fdba74;
+  --node-asset-bg: #f8fafc;
+  --node-asset-border: #cbd5e1;
+  --node-positive-bg: #f0fdf4;
+  --node-positive-border: #86efac;
+  --node-negative-bg: #fef2f2;
+  --node-negative-border: #fca5a5;
+  --node-text: #1e293b;
+  --node-label: #64748b;
+  --edge-label-bg: #ffffff;
+  --graph-dot: #e2e8f0;
+  --tooltip-bg: #ffffff;
+  --tooltip-border: #e2e8f0;
+  --tooltip-text: #334155;
+}
+
+[data-theme="dark"] {
+  --bg-page: #0c1021;
+  --bg-card: #111827;
+  --bg-sidebar: #0d1220;
+  --bg-header: #0a0e1a;
+  --bg-input: #1e293b;
+  --bg-hover: #1e293b;
+  --bg-active: #172554;
+  --bg-graph: #080c16;
+  --bg-overlay: rgba(12,16,33,0.92);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --text-inverse: #1e293b;
+  --border: #1e293b;
+  --border-light: rgba(30,41,59,0.5);
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+  --accent: #3b82f6;
+  --accent-soft: #172554;
+  --danger: #ef4444;
+  --danger-soft: rgba(239,68,68,0.1);
+  --success: #22c55e;
+  --success-soft: rgba(34,197,94,0.1);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245,158,11,0.1);
+  --news-bg: #111827;
+  --news-hover: #1e293b;
+  --news-selected: #172554;
+  --news-border: #1e293b;
+  --news-important-bg: rgba(239,68,68,0.08);
+  --node-hotspot-bg: rgba(127,29,29,0.7);
+  --node-hotspot-border: rgba(239,68,68,0.4);
+  --node-variable-bg: rgba(120,53,15,0.7);
+  --node-variable-border: rgba(245,158,11,0.4);
+  --node-impact-bg: rgba(124,45,18,0.7);
+  --node-impact-border: rgba(249,115,22,0.4);
+  --node-asset-bg: rgba(30,41,59,0.8);
+  --node-asset-border: rgba(100,116,139,0.4);
+  --node-positive-bg: rgba(6,78,59,0.7);
+  --node-positive-border: rgba(34,197,94,0.4);
+  --node-negative-bg: rgba(127,29,29,0.7);
+  --node-negative-border: rgba(239,68,68,0.4);
+  --node-text: #f1f5f9;
+  --node-label: #94a3b8;
+  --edge-label-bg: #0f172a;
+  --graph-dot: #1a1f3a;
+  --tooltip-bg: #1e293b;
+  --tooltip-border: #334155;
+  --tooltip-text: #e2e8f0;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* Scrollbar styling */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ReactFlow overrides for theme */
+.react-flow__background { background: var(--bg-graph) !important; }

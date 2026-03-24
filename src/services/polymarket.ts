@@ -110,11 +110,12 @@ async function getTopEvents(): Promise<PolymarketEvent[]> {
 }
 
 // Search events by keyword — local matching on top events since Gamma _q is broken
+// Requires at least 2 keyword matches to avoid irrelevant results
 export async function searchEvents(query: string, limit = 10): Promise<PolymarketEvent[]> {
   const events = await getTopEvents();
   const keywords = query.toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
 
-  if (keywords.length === 0) return events.slice(0, limit);
+  if (keywords.length === 0) return [];
 
   // Score each event by keyword match count
   const scored = events.map(event => {
@@ -123,8 +124,11 @@ export async function searchEvents(query: string, limit = 10): Promise<Polymarke
     return { event, matches };
   });
 
+  // Require at least 2 keyword matches for relevance (avoid noise)
+  const minMatches = keywords.length === 1 ? 1 : 2;
+
   return scored
-    .filter(s => s.matches > 0)
+    .filter(s => s.matches >= minMatches)
     .sort((a, b) => b.matches - a.matches || b.event.volume24hr - a.event.volume24hr)
     .slice(0, limit)
     .map(s => s.event);
