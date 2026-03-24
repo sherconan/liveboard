@@ -1,56 +1,54 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldAlert, Target, ChevronDown, ChevronUp, Lightbulb, Scale, LineChart } from 'lucide-react';
+import { ShieldAlert, Target, ChevronDown, ChevronUp, Lightbulb, Scale } from 'lucide-react';
+import { SwarmResult } from '../services/swarm';
+import { SwarmPanel } from './SwarmPanel';
 
 interface SummaryPanelProps {
   summary: string;
   actions: string[];
   divergenceAnalysis?: string;
   hasMarketData: boolean;
-  showTrend: boolean;
-  onToggleTrend: () => void;
-  hasTrendData: boolean;
+  swarmResult: SwarmResult | null;
+  swarmLoading: boolean;
 }
 
-export function SummaryPanel({ summary, actions, divergenceAnalysis, hasMarketData, showTrend, onToggleTrend, hasTrendData }: SummaryPanelProps) {
+export function SummaryPanel({ summary, actions, divergenceAnalysis, hasMarketData, swarmResult, swarmLoading }: SummaryPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
   if (!summary && actions.length === 0) return null;
+
+  const hasSwarm = swarmResult || swarmLoading;
 
   return (
     <motion.div
       initial={{ y: 80, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ delay: 0.3, duration: 0.4 }}
-      className="absolute bottom-3 left-3 right-3 bg-[#0d1220]/95 backdrop-blur-xl border border-slate-700/40 rounded-xl shadow-2xl shadow-black/50 z-20 flex flex-col overflow-hidden"
+      className="absolute bottom-3 left-3 right-3 backdrop-blur-xl rounded-xl z-20 flex flex-col overflow-hidden"
+      style={{
+        background: 'var(--bg-overlay)',
+        border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-lg)',
+        maxHeight: isExpanded ? '55vh' : 'auto',
+      }}
     >
       <div
-        className={`px-5 py-2.5 flex justify-between items-center cursor-pointer hover:bg-slate-800/30 transition-colors ${isExpanded ? 'border-b border-slate-700/30' : ''}`}
+        className="px-5 py-2.5 flex justify-between items-center cursor-pointer transition-colors shrink-0"
+        style={{ borderBottom: isExpanded ? '1px solid var(--border-light)' : 'none' }}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">
-          <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-xs font-semibold text-slate-300 tracking-wide">
+          <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+          <span className="text-xs font-semibold tracking-wide" style={{ color: 'var(--text-secondary)' }}>
             推演结论
-            {hasMarketData && <span className="text-slate-600 font-normal ml-1.5">· 已融合市场</span>}
+            {hasMarketData && <span style={{ color: 'var(--text-muted)' }} className="font-normal ml-1.5">· 已融合市场</span>}
+            {hasSwarm && <span style={{ color: 'var(--accent)' }} className="font-normal ml-1.5">· 多Agent分析</span>}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          {hasTrendData && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleTrend(); }}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-colors ${
-                showTrend ? 'bg-red-500/10 text-red-400' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              <LineChart className="w-3 h-3" />
-              趋势
-            </button>
-          )}
-          <button className="text-slate-600 hover:text-slate-300 transition-colors">
-            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-          </button>
-        </div>
+        <button style={{ color: 'var(--text-muted)' }}>
+          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
       <AnimatePresence initial={false}>
@@ -60,29 +58,36 @@ export function SummaryPanel({ summary, actions, divergenceAnalysis, hasMarketDa
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25 }}
-            className="overflow-hidden"
+            className="overflow-y-auto scrollbar-thin"
           >
+            {/* Swarm Analysis — the star feature */}
+            {hasSwarm && (
+              <div style={{ borderBottom: '1px solid var(--border-light)' }}>
+                <SwarmPanel swarm={swarmResult} loading={swarmLoading} />
+              </div>
+            )}
+
             <div className="p-5 flex flex-col gap-4">
               <div className="flex flex-col md:flex-row gap-5">
                 {/* Summary */}
-                <div className="flex-1 space-y-2 md:border-r border-slate-700/30 md:pr-5">
-                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400/60" />
+                <div className="flex-1 space-y-2">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-500/60" />
                     场景判断
                   </h3>
-                  <p className="text-sm text-slate-300 leading-relaxed">{summary}</p>
+                  <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{summary}</p>
                 </div>
 
                 {/* Actions */}
                 <div className="flex-1 space-y-2">
-                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-red-400/60" />
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <Target className="w-3.5 h-3.5 text-blue-500/60" />
                     操作建议
                   </h3>
                   <ul className="space-y-1.5">
                     {actions.map((action, idx) => (
-                      <li key={idx} className="text-sm text-slate-300 flex items-start gap-2">
-                        <span className="text-red-500/60 mt-0.5 shrink-0 text-xs">{idx + 1}.</span>
+                      <li key={idx} className="text-sm flex items-start gap-2" style={{ color: 'var(--text-primary)' }}>
+                        <span className="text-blue-500/60 mt-0.5 shrink-0 text-xs">{idx + 1}.</span>
                         <span>{action}</span>
                       </li>
                     ))}
@@ -90,14 +95,15 @@ export function SummaryPanel({ summary, actions, divergenceAnalysis, hasMarketDa
                 </div>
               </div>
 
-              {/* Divergence */}
               {divergenceAnalysis && hasMarketData && (
-                <div className="border-t border-slate-700/30 pt-3 space-y-2">
-                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                    <Scale className="w-3.5 h-3.5 text-blue-400/60" />
+                <div className="pt-3 space-y-2" style={{ borderTop: '1px solid var(--border-light)' }}>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <Scale className="w-3.5 h-3.5 text-blue-500/60" />
                     AI vs 市场分歧
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed bg-blue-500/5 border border-blue-500/10 rounded-lg p-3">
+                  <p className="text-xs leading-relaxed rounded-lg p-3"
+                    style={{ background: 'var(--accent-soft)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                  >
                     {divergenceAnalysis}
                   </p>
                 </div>

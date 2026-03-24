@@ -180,3 +180,69 @@ ${marketContext}
 
   return { systemPrompt, userPrompt };
 }
+
+/**
+ * Layer-by-layer graph generation prompts.
+ * Each call is small → fast response (~3-5s each).
+ */
+
+/** Layer 1: hotspot + variables + initial edges */
+export function buildLayer1Prompt(hotspot: string, variables: Variable[]) {
+  const system = `你是宏观策略分析师。从新闻事件提取核心事件节点和关键变量。
+严格输出JSON，无其他文字:
+{
+  "nodes": [
+    {"id":"英文id","label":"≤8字中文","type":"hotspot","detail":"一句话"},
+    {"id":"英文id","label":"≤8字中文","type":"variable","detail":"一句话"}
+  ],
+  "edges": [{"source":"id","target":"id","label":"≤6字传导机制","weight":"high|critical"}],
+  "polymarketQueries": ["英文搜索词3-5个"]
+}
+要求: 1-2个hotspot + 2-3个variable + 它们之间的边。`;
+  const user = `新闻：${hotspot}${variables.length > 0 ? `\n变量：${variables.map(v => `${v.name}=${v.value}`).join(', ')}` : ''}\n输出JSON。`;
+  return { system, user };
+}
+
+/** Layer 2: given layer1 nodes, add impacts + their edges */
+export function buildLayer2Prompt(hotspot: string, layer1Nodes: any[]) {
+  const existing = layer1Nodes.map(n => `${n.id}(${n.label})`).join(', ');
+  const system = `你是宏观策略分析师。已有事件+变量节点，现在推导传导效应。
+严格输出JSON:
+{
+  "nodes": [{"id":"英文id","label":"≤8字中文","type":"impact","detail":"一句话"}],
+  "edges": [{"source":"已有或新id","target":"已有或新id","label":"≤6字","weight":"low|medium|high|critical"}]
+}
+要求: 新增3-4个impact节点 + 从已有节点到impact的边 + impact之间的二阶传导边。`;
+  const user = `新闻：${hotspot}\n已有节点：${existing}\n输出新增的impact层JSON。`;
+  return { system, user };
+}
+
+/** Layer 3: given all nodes so far, add assets + edges + suggested assets */
+export function buildLayer3Prompt(hotspot: string, allNodes: any[], targetAssets: string) {
+  const existing = allNodes.map(n => `${n.id}(${n.label},${n.type})`).join(', ');
+  const system = `你是宏观策略分析师。已有事件→变量→传导效应，现在确定受影响的资产标的。
+严格输出JSON:
+{
+  "nodes": [{"id":"英文id","label":"≤8字中文","type":"asset","sentiment":"positive|negative|neutral","detail":"一句话"}],
+  "edges": [{"source":"impact的id","target":"asset的id","label":"≤6字","weight":"low|medium|high|critical"}],
+  "suggestedAssets": "所有资产逗号分隔(含英文ticker)"
+}
+要求: 4-6个asset节点,每个必须有sentiment和至少1条入边。`;
+  const user = `新闻：${hotspot}\n已有节点：${existing}${targetAssets ? `\n关注标的：${targetAssets}` : '\n自动识别标的'}\n输出JSON。`;
+  return { system, user };
+}
+
+/** Final: generate trading insight from complete graph */
+export function buildInsightPrompt(hotspot: string, nodes: any[], edges: any[]) {
+  const graphDesc = nodes.map((n: any) => `[${n.type}] ${n.label}`).join(', ');
+  const system = `你是顶级交易员。已有因果传导图，给出交易判断。
+严格输出JSON:
+{
+  "scenarios": [{"name":"场景名","probability":0-100,"rationale":"一句话"}],
+  "summary": "≤40字喊单风格判断",
+  "coreActions": ["具体操作:标的+方向+理由"]
+}
+summary≤40字!像喊单。coreActions具体到标的。`;
+  const user = `新闻：${hotspot}\n图：${graphDesc}\n输出JSON。`;
+  return { system, user };
+}
