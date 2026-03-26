@@ -12,6 +12,7 @@ export default defineConfig(({mode}) => {
       'process.env.LLM_API_KEY': JSON.stringify(env.LLM_API_KEY || ''),
       'process.env.LLM_MODEL': JSON.stringify(env.LLM_MODEL || ''),
       'process.env.BOCHA_API_KEY': JSON.stringify(env.BOCHA_API_KEY || ''),
+      'process.env.EASTMONEY_APIKEY': JSON.stringify(env.EASTMONEY_APIKEY || ''),
     },
     resolve: {
       alias: {
@@ -81,6 +82,14 @@ export default defineConfig(({mode}) => {
           headers: {
             'Referer': 'https://quote.eastmoney.com/',
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          },
+        },
+        '/api/em-search': {
+          target: 'https://mkapi2.dfcfs.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/em-search/, ''),
+          headers: {
+            'apikey': env.EASTMONEY_APIKEY || '',
           },
         },
       },
