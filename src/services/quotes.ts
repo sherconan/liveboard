@@ -93,24 +93,69 @@ async function fetchQuote(secid: string): Promise<QuoteData | null> {
 }
 
 /**
+ * Fallback: use Eastmoney skill API for assets not in our mapping
+ */
+const EM_KEY = process.env.EASTMONEY_APIKEY || '';
+
+async function fetchQuoteViaSkill(label: string): Promise<QuoteData | null> {
+  if (!EM_KEY) return null;
+  try {
+    const res = await fetch('/api/em-search/finskillshub/api/claw/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': EM_KEY },
+      body: JSON.stringify({ toolQuery: `${label}最新价` }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const tables = data?.data?.data?.searchDataResultDTO?.dataTableDTOList || data?.data?.data?.dataTableDTOList || [];
+    if (tables.length === 0) return null;
+
+    const t = tables[0];
+    const price = parseFloat(t.table?.f2?.[0] || t.rawTable?.f2?.[0] || '0');
+    const change = parseFloat(t.table?.f3?.[0] || t.rawTable?.f3?.[0] || '0');
+    if (!price) return null;
+
+    return { name: t.entityName || label, price, change };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Batch fetch quotes for multiple asset labels
- * Returns a map of label → QuoteData
+ * Strategy: try local mapping first, fallback to Eastmoney skill API
  */
 export async function fetchAssetQuotes(assetLabels: string[]): Promise<Map<string, QuoteData>> {
   const result = new Map<string, QuoteData>();
   const tasks: Promise<void>[] = [];
+  const unmapped: string[] = [];
 
   for (const label of assetLabels) {
     const secid = findSecid(label);
-    if (!secid) continue;
-
-    tasks.push(
-      fetchQuote(secid).then(quote => {
-        if (quote) result.set(label, quote);
-      })
-    );
+    if (secid) {
+      tasks.push(
+        fetchQuote(secid).then(quote => {
+          if (quote) result.set(label, quote);
+          else unmapped.push(label);
+        })
+      );
+    } else {
+      unmapped.push(label);
+    }
   }
 
   await Promise.allSettled(tasks);
+
+  // Fallback: try Eastmoney skill API for unmapped labels
+  if (unmapped.length > 0 && EM_KEY) {
+    const fallbackTasks = unmapped.slice(0, 5).map(label =>
+      fetchQuoteViaSkill(label).then(quote => {
+        if (quote) result.set(label, quote);
+      })
+    );
+    await Promise.allSettled(fallbackTasks);
+  }
+
   return result;
 }

@@ -20,7 +20,7 @@ export interface NewsItem {
 // ─── Impact scoring (inspired by BettaFish weighted hotness) ───
 
 // Source authority weight
-const SOURCE_WEIGHT: Record<string, number> = { '华尔街见闻': 15, '新浪财经': 10 };
+const SOURCE_WEIGHT: Record<string, number> = { '华尔街见闻': 15, '东方财富': 15, '新浪财经': 10 };
 
 // Entity-level keywords that signal high market impact
 const HIGH_IMPACT_ENTITIES = [
@@ -242,15 +242,75 @@ async function fetchBochaNews(): Promise<NewsItem[]> {
   }
 }
 
+// ─── Eastmoney Financial Search (权威金融资讯) ───
+
+const EASTMONEY_APIKEY = process.env.EASTMONEY_APIKEY || '';
+
+async function fetchEastmoneyNews(): Promise<NewsItem[]> {
+  if (!EASTMONEY_APIKEY) return [];
+  try {
+    const res = await fetch('/api/em-search/finskillshub/api/claw/news-search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': EASTMONEY_APIKEY,
+      },
+      body: JSON.stringify({ query: '今日突发事件 央行政策 地缘政治 重大公告 财报超预期' }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) throw new Error(`EM ${res.status}`);
+    const data = await res.json();
+
+    // Navigate nested response
+    const inner = data?.data?.data || {};
+    const findList = (obj: any, depth = 0): any[] => {
+      if (depth > 5) return [];
+      if (Array.isArray(obj) && obj.length > 0) return obj;
+      if (obj && typeof obj === 'object') {
+        for (const v of Object.values(obj)) {
+          const r = findList(v, depth + 1);
+          if (r.length) return r;
+        }
+      }
+      return [];
+    };
+
+    const results = findList(inner);
+    return results.slice(0, 15).map((r: any, i: number) => {
+      const title = (r.title || r.trunk || '').replace(/<[^>]+>/g, '').slice(0, 100).trim();
+      if (!title) return null;
+      const tags = classifyTags(title);
+      const ts = Date.now() - i * 60000;
+      const d = new Date(ts);
+      return {
+        id: `em-${i}-${ts}`,
+        title,
+        source: '东方财富',
+        time: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
+        timestamp: ts,
+        important: i < 3,
+        tags,
+        impact: scoreImpact(title, '东方财富', i < 3, tags.length),
+      };
+    }).filter(Boolean) as NewsItem[];
+  } catch (err) {
+    console.warn('Eastmoney news fetch failed:', err);
+    return [];
+  }
+}
+
 // ─── Public API ───
 
 export async function fetchLiveNews(): Promise<NewsItem[]> {
-  const [wscn, sina, bocha] = await Promise.allSettled([fetchWallstreetcnNews(), fetchSinaNews(), fetchBochaNews()]);
+  const [wscn, sina, bocha, em] = await Promise.allSettled([
+    fetchWallstreetcnNews(), fetchSinaNews(), fetchBochaNews(), fetchEastmoneyNews(),
+  ]);
 
   const all: NewsItem[] = [
     ...(wscn.status === 'fulfilled' ? wscn.value : []),
     ...(sina.status === 'fulfilled' ? sina.value : []),
     ...(bocha.status === 'fulfilled' ? bocha.value : []),
+    ...(em.status === 'fulfilled' ? em.value : []),
   ];
 
   // Filter noise, sort by impact (primary) + time (secondary), dedupe
