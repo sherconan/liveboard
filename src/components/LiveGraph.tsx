@@ -215,7 +215,7 @@ export function LiveGraph({ data, animate = false, assetQuotes }: LiveGraphProps
     const laid = layoutElements(initialNodes, initialEdges);
     setNodes(laid);
     setEdges(initialEdges);
-  }, [data, setNodes, setEdges, isDark]);
+  }, [data, setNodes, setEdges, isDark, assetQuotes]);
 
   useEffect(() => {
     setNodes(nds => nds.map(n => ({

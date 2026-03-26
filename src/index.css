@@ -1,16 +1,17 @@
 @import "tailwindcss";
 
+/* ─── Light Theme ─── */
 :root,
 [data-theme="light"] {
   --bg-page: #f3f5f9;
   --bg-card: #ffffff;
   --bg-sidebar: #ffffff;
-  --bg-header: #ffffff;
+  --bg-header: rgba(255,255,255,0.85);
   --bg-input: #f1f5f9;
   --bg-hover: #f8fafc;
   --bg-active: #eff6ff;
   --bg-graph: #f8fafc;
-  --bg-overlay: rgba(255,255,255,0.92);
+  --bg-overlay: rgba(255,255,255,0.88);
   --text-primary: #1e293b;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
@@ -18,7 +19,8 @@
   --border: #e2e8f0;
   --border-light: #f1f5f9;
   --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-lg: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.04);
+  --shadow-glow: none;
   --accent: #3b82f6;
   --accent-soft: #eff6ff;
   --danger: #ef4444;
@@ -51,18 +53,22 @@
   --tooltip-bg: #ffffff;
   --tooltip-border: #e2e8f0;
   --tooltip-text: #334155;
+  --glass-bg: rgba(255,255,255,0.72);
+  --glass-border: rgba(255,255,255,0.3);
+  --glass-inset: inset 0 1px 0 rgba(255,255,255,0.6);
 }
 
+/* ─── Dark Theme ─── */
 [data-theme="dark"] {
   --bg-page: #0c1021;
   --bg-card: #111827;
   --bg-sidebar: #0d1220;
-  --bg-header: #0a0e1a;
+  --bg-header: rgba(10,14,26,0.85);
   --bg-input: #1e293b;
   --bg-hover: #1e293b;
   --bg-active: #172554;
   --bg-graph: #080c16;
-  --bg-overlay: rgba(12,16,33,0.92);
+  --bg-overlay: rgba(12,16,33,0.88);
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-muted: #475569;
@@ -70,7 +76,8 @@
   --border: #1e293b;
   --border-light: rgba(30,41,59,0.5);
   --shadow: 0 1px 3px rgba(0,0,0,0.3);
-  --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 10px 25px -5px rgba(0,0,0,0.5), 0 4px 10px rgba(0,0,0,0.3);
+  --shadow-glow: 0 0 20px rgba(59,130,246,0.06);
   --accent: #3b82f6;
   --accent-soft: #172554;
   --danger: #ef4444;
@@ -103,22 +110,138 @@
   --tooltip-bg: #1e293b;
   --tooltip-border: #334155;
   --tooltip-text: #e2e8f0;
+  --glass-bg: rgba(17,24,39,0.72);
+  --glass-border: rgba(255,255,255,0.06);
+  --glass-inset: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
+/* ─── Base ─── */
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: var(--bg-page);
   color: var(--text-primary);
-  transition: background-color 0.3s, color 0.3s;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Scrollbar styling */
+/* ─── Scrollbar ─── */
 .scrollbar-thin::-webkit-scrollbar { width: 4px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* ReactFlow overrides for theme */
+/* ─── ReactFlow override ─── */
 .react-flow__background { background: var(--bg-graph) !important; }
+
+/* ─── Liquid Glass (from frontend-dev) ─── */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-inset), var(--shadow-lg);
+}
+
+/* ─── Micro-animations ─── */
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-pulse-ring { animation: pulse-ring 2s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+.animate-float { animation: float-gentle 3s ease-in-out infinite; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 30%, var(--accent-soft) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+.animate-fade-up { animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-scale-in { animation: scale-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* ─── Stagger delays ─── */
+.stagger-1 { animation-delay: 100ms; }
+.stagger-2 { animation-delay: 200ms; }
+.stagger-3 { animation-delay: 300ms; }
+.stagger-4 { animation-delay: 400ms; }
+.stagger-5 { animation-delay: 500ms; }
+
+/* ─── Interactive states ─── */
+.interactive {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s ease,
+              border-color 0.2s ease;
+}
+.interactive:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+}
+.interactive:active {
+  transform: scale(0.98);
+}
+
+/* ─── News item transitions ─── */
+.news-item {
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.news-item:hover {
+  transform: translateX(2px);
+}
+
+/* ─── Button press effect ─── */
+.btn-press {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* ─── Loading skeleton ─── */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-input) 25%, var(--bg-hover) 50%, var(--bg-input) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* ─── Cinematic loading overlay ─── */
+.loading-overlay {
+  background: var(--bg-overlay);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+}
+
+/* ─── Graph node glow effects ─── */
+[data-theme="dark"] .node-hotspot { box-shadow: 0 0 24px rgba(239,68,68,0.15); }
+[data-theme="dark"] .node-positive { box-shadow: 0 0 20px rgba(34,197,94,0.12); }
+[data-theme="dark"] .node-negative { box-shadow: 0 0 20px rgba(239,68,68,0.12); }
+
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Typography refinement ─── */
+.font-mono { font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace; }
+.tracking-tighter { letter-spacing: -0.04em; }

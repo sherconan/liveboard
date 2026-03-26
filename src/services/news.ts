@@ -203,7 +203,7 @@ const BOCHA_API_KEY = process.env.BOCHA_API_KEY || '';
 async function fetchBochaNews(): Promise<NewsItem[]> {
   if (!BOCHA_API_KEY) return [];
   try {
-    const res = await fetch('https://api.bochaai.com/v1/web-search', {
+    const res = await fetch('/api/bocha/v1/web-search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

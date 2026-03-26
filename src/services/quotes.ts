@@ -75,7 +75,7 @@ function findSecid(label: string): string | null {
 async function fetchQuote(secid: string): Promise<QuoteData | null> {
   try {
     const res = await fetch(
-      `https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f43,f44,f45,f46,f57,f58,f170`,
+      `/api/eastmoney/api/qt/stock/get?secid=${secid}&fields=f43,f44,f45,f46,f57,f58,f170`,
       { signal: AbortSignal.timeout(5000) }
     );
     if (!res.ok) return null;
