@@ -59,7 +59,7 @@ npm run dev
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | `vite --port=3000 --host=0.0.0.0` |
+| `npm run dev` | `vite --port=3001 --host=0.0.0.0` |
 | `npm run build` | `vite build` |
 | `npm run preview` | `vite preview` |
 | `npm run clean` | `rm -rf dist` |

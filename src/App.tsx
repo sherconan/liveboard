@@ -274,23 +274,62 @@ export default function App() {
             </div>
           )}
 
-          {/* Loading overlay — only shows before graph appears */}
+          {/* Cinematic loading overlay */}
           {loading && !hasData && (
-            <div className="absolute inset-0 z-40 backdrop-blur-sm flex items-center justify-center" style={{ background: 'var(--bg-overlay)' }}>
-              <div className="text-center space-y-6 max-w-md">
-                <div className="relative mx-auto w-16 h-16">
-                  <div className="absolute inset-0 rounded-full border-2 border-blue-500/20 animate-ping" />
-                  <div className="absolute inset-2 rounded-full border-2 border-indigo-500/30 animate-ping [animation-delay:400ms]" />
+            <div className="loading-overlay absolute inset-0 z-40 flex items-center justify-center">
+              <div className="text-center space-y-8 max-w-sm animate-fade-up">
+                {/* Radar rings */}
+                <div className="relative mx-auto w-20 h-20">
+                  <div className="absolute inset-0 rounded-full border border-blue-500/20 animate-pulse-ring" />
+                  <div className="absolute inset-1 rounded-full border border-blue-500/15 animate-pulse-ring" style={{ animationDelay: '0.5s' }} />
+                  <div className="absolute inset-2 rounded-full border border-blue-500/10 animate-pulse-ring" style={{ animationDelay: '1s' }} />
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 text-blue-500" />
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center glass">
+                      <Sparkles className="w-5 h-5 text-blue-500 animate-float" />
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <p className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>{loadingStep || '准备中...'}</p>
-                  <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>通过 Claude 分析，通常需要 15-30 秒</p>
+
+                {/* Step text */}
+                <div className="space-y-2">
+                  <p className="text-base font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+                    {loadingStep || '准备中...'}
+                  </p>
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    多 Agent 协同分析 · 通常 20-40 秒
+                  </p>
                 </div>
-                <div className="text-xs rounded-lg px-4 py-2 mx-auto max-w-xs truncate"
-                  style={{ background: 'var(--bg-input)', color: 'var(--text-muted)' }}
+
+                {/* Progress steps */}
+                <div className="flex justify-center gap-6 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                  {['识别事件', '推演传导', '确定标的', '交易判断'].map((step, i) => {
+                    const keywords = ['识别', '推导', '确定', '交易'];
+                    const isActive = loadingStep.includes(keywords[i]);
+                    const isPast = loadingStep && !isActive &&
+                      keywords.findIndex(k => loadingStep.includes(k)) > i;
+                    return (
+                      <div key={i} className="flex flex-col items-center gap-1.5">
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold transition-all duration-500"
+                          style={{
+                            background: isActive ? 'var(--accent)' : isPast ? 'var(--success)' : 'var(--bg-input)',
+                            color: isActive || isPast ? '#fff' : 'var(--text-muted)',
+                            boxShadow: isActive ? '0 0 12px rgba(59,130,246,0.4)' : 'none',
+                          }}
+                        >
+                          {isPast ? '✓' : i + 1}
+                        </div>
+                        <span className={isActive ? 'font-medium' : ''} style={{ color: isActive ? 'var(--accent)' : undefined }}>
+                          {step}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Event badge */}
+                <div className="glass rounded-full px-4 py-2 mx-auto max-w-xs truncate text-xs"
+                  style={{ color: 'var(--text-secondary)' }}
                 >
                   {hotspot}
                 </div>

@@ -68,6 +68,21 @@ export default defineConfig(({mode}) => {
             'User-Agent': 'LiveBoard/1.0',
           },
         },
+        '/api/bocha': {
+          target: 'https://api.bochaai.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/bocha/, ''),
+        },
+        '/api/eastmoney': {
+          target: 'https://push2.eastmoney.com',
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api\/eastmoney/, ''),
+          headers: {
+            'Referer': 'https://quote.eastmoney.com/',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          },
+        },
       },
     },
   };
