@@ -224,7 +224,7 @@ export default function App() {
   const hasData = data.nodes.length > 0;
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
+    <div className="grain-overlay flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
       <Header
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}

@@ -87,10 +87,10 @@ const CustomNode = ({ data }: NodeProps) => {
       {/* Real-time quote badge for asset nodes */}
       {quote && type === 'asset' && (
         <div className="flex flex-col items-end shrink-0 ml-1">
-          <span className="text-[11px] font-mono font-bold" style={{ color: 'var(--node-text)' }}>
+          <span className="metric-value text-[11px]" style={{ color: 'var(--node-text)' }}>
             {quote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
-          <span className={`text-[10px] font-mono font-semibold ${quote.change >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+          <span className={`metric-delta ${quote.change >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
             {quote.change >= 0 ? '+' : ''}{quote.change.toFixed(2)}%
           </span>
         </div>

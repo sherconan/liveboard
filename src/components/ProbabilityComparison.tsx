@@ -38,7 +38,7 @@ export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps)
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px]">
                   <span className="uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>AI 推演</span>
-                  <span className="font-mono font-semibold text-blue-500">{aiProb}%</span>
+                  <span className="metric-delta text-blue-500">{aiProb}%</span>
                 </div>
                 <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'var(--bg-input)' }}>
                   <motion.div
@@ -54,7 +54,7 @@ export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps)
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px]">
                     <span className="uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>市场共识</span>
-                    <span className="font-mono font-semibold text-emerald-500">{(marketProb * 100).toFixed(1)}%</span>
+                    <span className="metric-delta text-emerald-500">{(marketProb * 100).toFixed(1)}%</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'var(--bg-input)' }}>
                     <motion.div
