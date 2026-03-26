@@ -8,6 +8,7 @@ import { MarketPulse } from './components/MarketPulse';
 import { PolymarketMarket, searchEvents } from './services/polymarket';
 import { SimulationData, Variable, Analysis, callLLM, extractJSON, buildLayer1Prompt, buildLayer2Prompt, buildLayer3Prompt, buildInsightPrompt } from './services/llm';
 import { SwarmResult, runSwarmAnalysis } from './services/swarm';
+import { fetchAssetQuotes, QuoteData } from './services/quotes';
 
 const EMPTY_DATA: SimulationData = {
   scenarios: [], nodes: [], edges: [], summary: '', coreActions: [],
@@ -30,6 +31,7 @@ export default function App() {
   const [analyzedHotspot, setAnalyzedHotspot] = useState('');
   const [swarmResult, setSwarmResult] = useState<SwarmResult | null>(null);
   const [swarmLoading, setSwarmLoading] = useState(false);
+  const [assetQuotes, setAssetQuotes] = useState<Map<string, QuoteData>>(new Map());
 
   // When user picks a different news, clear old results
   const handleSetHotspot = useCallback((val: string) => {
@@ -141,6 +143,12 @@ export default function App() {
         setTargetAssets(sugAssets);
       }
       pushGraph(r3.nodes || [], r3.edges || []);
+
+      // ── Fetch real-time quotes for asset nodes (non-blocking) ──
+      const assetLabels = allNodes.filter(n => n.type === 'asset').map(n => n.label);
+      if (assetLabels.length > 0) {
+        fetchAssetQuotes(assetLabels).then(quotes => setAssetQuotes(quotes)).catch(() => {});
+      }
 
       // ── Final: Trading insight (~3-5s) ──
       setLoadingStep('生成交易判断...');
@@ -294,7 +302,7 @@ export default function App() {
           {hasData && (
             <div className="flex-1 flex min-h-0">
               <div className="flex-1 min-w-0 relative">
-                <LiveGraph data={data} animate={shouldAnimate} />
+                <LiveGraph data={data} animate={shouldAnimate} assetQuotes={assetQuotes} />
                 {/* Step 2 indicator — shows while generating insights after graph is visible */}
                 {loadingStep && !loading && (
                   <div

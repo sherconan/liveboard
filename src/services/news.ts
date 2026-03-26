@@ -196,14 +196,61 @@ async function fetchSinaNews(): Promise<NewsItem[]> {
   }
 }
 
+// ─── Bocha Web Search (broader coverage, event-focused) ───
+
+const BOCHA_API_KEY = process.env.BOCHA_API_KEY || '';
+
+async function fetchBochaNews(): Promise<NewsItem[]> {
+  if (!BOCHA_API_KEY) return [];
+  try {
+    const res = await fetch('https://api.bochaai.com/v1/web-search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${BOCHA_API_KEY}`,
+      },
+      body: JSON.stringify({
+        query: '今日重大财经新闻事件 突发',
+        freshness: 'oneDay',
+        summary: true,
+        count: 15,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) throw new Error(`Bocha ${res.status}`);
+    const data = await res.json();
+    const results = data?.data?.webPages?.value || [];
+
+    return results.map((r: any, i: number) => {
+      const title = (r.name || '').replace(/<[^>]+>/g, '').replace(/[-_|]\s*.*$/, '').trim();
+      const tags = classifyTags(title);
+      const ts = r.datePublished ? new Date(r.datePublished).getTime() : Date.now() - i * 60000;
+      const d = new Date(ts);
+      return {
+        id: `bocha-${i}-${ts}`,
+        title,
+        source: r.siteName || '博查搜索',
+        time: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
+        timestamp: ts,
+        tags,
+        impact: scoreImpact(title, r.siteName || '博查搜索', false, tags.length),
+      };
+    }).filter((n: NewsItem) => n.title.length > 10 && !isNoise(n.title));
+  } catch (err) {
+    console.warn('Bocha news fetch failed:', err);
+    return [];
+  }
+}
+
 // ─── Public API ───
 
 export async function fetchLiveNews(): Promise<NewsItem[]> {
-  const [wscn, sina] = await Promise.allSettled([fetchWallstreetcnNews(), fetchSinaNews()]);
+  const [wscn, sina, bocha] = await Promise.allSettled([fetchWallstreetcnNews(), fetchSinaNews(), fetchBochaNews()]);
 
   const all: NewsItem[] = [
     ...(wscn.status === 'fulfilled' ? wscn.value : []),
     ...(sina.status === 'fulfilled' ? sina.value : []),
+    ...(bocha.status === 'fulfilled' ? bocha.value : []),
   ];
 
   // Filter noise, sort by impact (primary) + time (secondary), dedupe

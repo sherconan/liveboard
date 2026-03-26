@@ -52,7 +52,7 @@ function getNodeStyle(type: string, sentiment?: string) {
 }
 
 const CustomNode = ({ data }: NodeProps) => {
-  const { label, type, sentiment, phase, nodePhase, detail } = data;
+  const { label, type, sentiment, phase, nodePhase, detail, quote } = data;
   const typeLabel = typeLabels[type] || type;
   const style = getNodeStyle(type, sentiment);
   const visible = phase >= nodePhase;
@@ -61,7 +61,7 @@ const CustomNode = ({ data }: NodeProps) => {
   return (
     <div
       className={`group relative px-4 py-3 rounded-xl flex items-center gap-3
-        min-w-[160px] max-w-[240px]
+        min-w-[160px] max-w-[260px]
         transition-all duration-700 ease-out
         ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}
         ${appearing ? 'ring-1 ring-blue-500/20' : ''}
@@ -76,7 +76,7 @@ const CustomNode = ({ data }: NodeProps) => {
       <div className="p-1.5 rounded-lg shrink-0" style={{ background: style.iconBg }}>
         {getIcon(type, sentiment)}
       </div>
-      <div className="flex flex-col min-w-0">
+      <div className="flex flex-col min-w-0 flex-1">
         <span className="text-[9px] uppercase tracking-widest font-bold" style={{ color: 'var(--node-label)', opacity: 0.6 }}>
           {typeLabel}
         </span>
@@ -84,6 +84,17 @@ const CustomNode = ({ data }: NodeProps) => {
           {label}
         </span>
       </div>
+      {/* Real-time quote badge for asset nodes */}
+      {quote && type === 'asset' && (
+        <div className="flex flex-col items-end shrink-0 ml-1">
+          <span className="text-[11px] font-mono font-bold" style={{ color: 'var(--node-text)' }}>
+            {quote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          <span className={`text-[10px] font-mono font-semibold ${quote.change >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+            {quote.change >= 0 ? '+' : ''}{quote.change.toFixed(2)}%
+          </span>
+        </div>
+      )}
       {detail && (
         <div
           className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 rounded-lg text-[11px] leading-relaxed max-w-[280px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
@@ -122,9 +133,10 @@ function layoutElements(nodes: Node[], edges: Edge[]) {
 interface LiveGraphProps {
   data: SimulationData;
   animate?: boolean;
+  assetQuotes?: Map<string, any>;
 }
 
-export function LiveGraph({ data, animate = false }: LiveGraphProps) {
+export function LiveGraph({ data, animate = false, assetQuotes }: LiveGraphProps) {
   const { isDark } = useTheme();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -166,6 +178,7 @@ export function LiveGraph({ data, animate = false }: LiveGraphProps) {
         type: n.type,
         sentiment: n.sentiment,
         detail: n.detail,
+        quote: n.type === 'asset' && assetQuotes?.get(n.label) || undefined,
         phase: phaseRef.current,
         nodePhase: nodePhaseMap[n.id],
       },

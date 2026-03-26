@@ -11,6 +11,7 @@ export default defineConfig(({mode}) => {
       'process.env.LLM_BASE_URL': JSON.stringify(env.LLM_BASE_URL || ''),
       'process.env.LLM_API_KEY': JSON.stringify(env.LLM_API_KEY || ''),
       'process.env.LLM_MODEL': JSON.stringify(env.LLM_MODEL || ''),
+      'process.env.BOCHA_API_KEY': JSON.stringify(env.BOCHA_API_KEY || ''),
     },
     resolve: {
       alias: {
