@@ -61,8 +61,9 @@ export async function callLLM(systemPrompt: string, userPrompt: string, signal?:
     } catch (err: any) {
       lastError = err;
       if (err.name === 'AbortError' || attempt >= retries) throw err;
-      // Wait before retry
-      await new Promise(r => setTimeout(r, 2000));
+      // Exponential backoff: 1s, 2s, 4s, ...
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+      await new Promise(r => setTimeout(r, delay));
     }
   }
 
@@ -90,8 +91,8 @@ export function buildPrompts(
   variables: Variable[],
   targetAssets: string,
   marketContext: string,
-  hasMarket: boolean,
-  isAutoMode: boolean,
+  _hasMarket: boolean,
+  _isAutoMode: boolean,
 ) {
   const systemPrompt = `你是一个顶级宏观策略分析师。给定一条事件性新闻，你的任务是构建**因果传导链**：从事件出发，经过关键变量和传导机制，最终影响到具体金融资产。
 
@@ -187,40 +188,79 @@ ${marketContext}
  */
 
 /** Layer 1: hotspot + variables + initial edges */
-export function buildLayer1Prompt(hotspot: string, variables: Variable[]) {
-  const system = `你是宏观策略分析师。从新闻事件提取核心事件节点和关键变量。
+export function buildLayer1Prompt(hotspot: string, variables: Variable[], locale: string = 'zh') {
+  const isEn = locale === 'en';
+  const labelRule = isEn ? '≤5 English words' : '≤8字中文';
+  const detailLang = isEn ? 'one English sentence' : '一句话';
+  const edgeLabelRule = isEn ? '≤4 English words' : '≤6字传导机制';
+  const system = isEn
+    ? `You are a macro strategy analyst. Extract core event nodes and key variables from the news event.
+Strictly output JSON, no other text:
+{
+  "nodes": [
+    {"id":"english_id","label":"${labelRule}","type":"hotspot","detail":"${detailLang}"},
+    {"id":"english_id","label":"${labelRule}","type":"variable","detail":"${detailLang}"}
+  ],
+  "edges": [{"source":"id","target":"id","label":"${edgeLabelRule}","weight":"high|critical"}],
+  "polymarketQueries": ["English search terms, 3-5"]
+}
+Requirements: 1-2 hotspot + 2-3 variable nodes + edges between them.`
+    : `你是宏观策略分析师。从新闻事件提取核心事件节点和关键变量。
 严格输出JSON，无其他文字:
 {
   "nodes": [
-    {"id":"英文id","label":"≤8字中文","type":"hotspot","detail":"一句话"},
-    {"id":"英文id","label":"≤8字中文","type":"variable","detail":"一句话"}
+    {"id":"英文id","label":"${labelRule}","type":"hotspot","detail":"${detailLang}"},
+    {"id":"英文id","label":"${labelRule}","type":"variable","detail":"${detailLang}"}
   ],
-  "edges": [{"source":"id","target":"id","label":"≤6字传导机制","weight":"high|critical"}],
+  "edges": [{"source":"id","target":"id","label":"${edgeLabelRule}","weight":"high|critical"}],
   "polymarketQueries": ["英文搜索词3-5个"]
 }
 要求: 1-2个hotspot + 2-3个variable + 它们之间的边。`;
-  const user = `新闻：${hotspot}${variables.length > 0 ? `\n变量：${variables.map(v => `${v.name}=${v.value}`).join(', ')}` : ''}\n输出JSON。`;
+  const newsLabel = isEn ? 'News' : '新闻';
+  const varLabel = isEn ? 'Variables' : '变量';
+  const user = `${newsLabel}：${hotspot}${variables.length > 0 ? `\n${varLabel}：${variables.map(v => `${v.name}=${v.value}`).join(', ')}` : ''}\nOutput JSON.`;
   return { system, user };
 }
 
 /** Layer 2: given layer1 nodes, add impacts + their edges */
-export function buildLayer2Prompt(hotspot: string, layer1Nodes: any[]) {
+export function buildLayer2Prompt(hotspot: string, layer1Nodes: any[], locale: string = 'zh') {
+  const isEn = locale === 'en';
   const existing = layer1Nodes.map(n => `${n.id}(${n.label})`).join(', ');
-  const system = `你是宏观策略分析师。已有事件+变量节点，现在推导传导效应。
+  const system = isEn
+    ? `You are a macro strategy analyst. Given existing event+variable nodes, derive transmission effects.
+Strictly output JSON:
+{
+  "nodes": [{"id":"english_id","label":"≤5 English words","type":"impact","detail":"one sentence"}],
+  "edges": [{"source":"existing_or_new_id","target":"existing_or_new_id","label":"≤4 words","weight":"low|medium|high|critical"}]
+}
+Requirements: Add 3-4 impact nodes + edges from existing nodes to impacts + second-order transmission edges.`
+    : `你是宏观策略分析师。已有事件+变量节点，现在推导传导效应。
 严格输出JSON:
 {
   "nodes": [{"id":"英文id","label":"≤8字中文","type":"impact","detail":"一句话"}],
   "edges": [{"source":"已有或新id","target":"已有或新id","label":"≤6字","weight":"low|medium|high|critical"}]
 }
 要求: 新增3-4个impact节点 + 从已有节点到impact的边 + impact之间的二阶传导边。`;
-  const user = `新闻：${hotspot}\n已有节点：${existing}\n输出新增的impact层JSON。`;
+  const user = isEn
+    ? `News: ${hotspot}\nExisting nodes: ${existing}\nOutput new impact layer JSON.`
+    : `新闻：${hotspot}\n已有节点：${existing}\n输出新增的impact层JSON。`;
   return { system, user };
 }
 
 /** Layer 3: given all nodes so far, add assets + edges + suggested assets */
-export function buildLayer3Prompt(hotspot: string, allNodes: any[], targetAssets: string) {
+export function buildLayer3Prompt(hotspot: string, allNodes: any[], targetAssets: string, locale: string = 'zh') {
+  const isEn = locale === 'en';
   const existing = allNodes.map(n => `${n.id}(${n.label},${n.type})`).join(', ');
-  const system = `你是宏观策略分析师。已有事件→变量→传导效应，现在确定受影响的资产标的。
+  const system = isEn
+    ? `You are a macro strategy analyst. Given event→variable→transmission effects, now determine affected assets.
+Strictly output JSON:
+{
+  "nodes": [{"id":"english_id","label":"≤5 English words","type":"asset","sentiment":"positive|negative|neutral","detail":"one sentence"}],
+  "edges": [{"source":"impact_id","target":"asset_id","label":"≤4 words","weight":"low|medium|high|critical"}],
+  "suggestedAssets": "all assets comma-separated (with English tickers)"
+}
+Requirements: 4-6 asset nodes, each must have sentiment and at least 1 incoming edge.`
+    : `你是宏观策略分析师。已有事件→变量→传导效应，现在确定受影响的资产标的。
 严格输出JSON:
 {
   "nodes": [{"id":"英文id","label":"≤8字中文","type":"asset","sentiment":"positive|negative|neutral","detail":"一句话"}],
@@ -228,14 +268,26 @@ export function buildLayer3Prompt(hotspot: string, allNodes: any[], targetAssets
   "suggestedAssets": "所有资产逗号分隔(含英文ticker)"
 }
 要求: 4-6个asset节点,每个必须有sentiment和至少1条入边。`;
-  const user = `新闻：${hotspot}\n已有节点：${existing}${targetAssets ? `\n关注标的：${targetAssets}` : '\n自动识别标的'}\n输出JSON。`;
+  const user = isEn
+    ? `News: ${hotspot}\nExisting nodes: ${existing}${targetAssets ? `\nFocus assets: ${targetAssets}` : '\nAuto-identify assets'}\nOutput JSON.`
+    : `新闻：${hotspot}\n已有节点：${existing}${targetAssets ? `\n关注标的：${targetAssets}` : '\n自动识别标的'}\n输出JSON。`;
   return { system, user };
 }
 
 /** Final: generate trading insight from complete graph */
-export function buildInsightPrompt(hotspot: string, nodes: any[], edges: any[]) {
+export function buildInsightPrompt(hotspot: string, nodes: any[], _edges: any[], locale: string = 'zh') {
+  const isEn = locale === 'en';
   const graphDesc = nodes.map((n: any) => `[${n.type}] ${n.label}`).join(', ');
-  const system = `你是顶级交易员。已有因果传导图，给出交易判断。
+  const system = isEn
+    ? `You are a top trader. Given a causal transmission graph, provide trading insight.
+Strictly output JSON:
+{
+  "scenarios": [{"name":"scenario name","probability":0-100,"rationale":"one sentence"}],
+  "summary": "≤20 word trading call, like a desk shout",
+  "coreActions": ["specific action: asset + direction + reason"]
+}
+summary ≤20 words! Like a trading desk call. coreActions must be specific to assets.`
+    : `你是顶级交易员。已有因果传导图，给出交易判断。
 严格输出JSON:
 {
   "scenarios": [{"name":"场景名","probability":0-100,"rationale":"一句话"}],
@@ -243,6 +295,8 @@ export function buildInsightPrompt(hotspot: string, nodes: any[], edges: any[]) 
   "coreActions": ["具体操作:标的+方向+理由"]
 }
 summary≤40字!像喊单。coreActions具体到标的。`;
-  const user = `新闻：${hotspot}\n图：${graphDesc}\n输出JSON。`;
+  const user = isEn
+    ? `News: ${hotspot}\nGraph: ${graphDesc}\nOutput JSON.`
+    : `新闻：${hotspot}\n图：${graphDesc}\n输出JSON。`;
   return { system, user };
 }

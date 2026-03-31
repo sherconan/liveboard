@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <!-- Full bleed background for maskable icon (safe zone is inner 80%) -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- Graph nodes - centered in safe zone -->
+  <circle cx="200" cy="200" r="22" fill="rgba(255,255,255,0.9)"/>
+  <circle cx="340" cy="175" r="16" fill="rgba(255,255,255,0.7)"/>
+  <circle cx="256" cy="280" r="28" fill="rgba(255,255,255,0.95)"/>
+  <circle cx="350" cy="295" r="14" fill="rgba(255,255,255,0.6)"/>
+  <!-- Edges -->
+  <line x1="218" y1="212" x2="238" y2="260" stroke="rgba(255,255,255,0.5)" stroke-width="3.5"/>
+  <line x1="328" y1="186" x2="272" y2="260" stroke="rgba(255,255,255,0.5)" stroke-width="3.5"/>
+  <line x1="280" y1="288" x2="338" y2="293" stroke="rgba(255,255,255,0.4)" stroke-width="2.5"/>
+  <line x1="218" y1="194" x2="328" y2="178" stroke="rgba(255,255,255,0.35)" stroke-width="2.5"/>
+  <!-- LB text -->
+  <text x="256" y="390" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="56" font-weight="700" fill="rgba(255,255,255,0.9)" letter-spacing="5">LB</text>
+</svg>

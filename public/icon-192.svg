@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="url(#bg)"/>
+  <!-- Graph nodes -->
+  <circle cx="60" cy="70" r="10" fill="rgba(255,255,255,0.9)"/>
+  <circle cx="132" cy="55" r="8" fill="rgba(255,255,255,0.7)"/>
+  <circle cx="96" cy="110" r="12" fill="rgba(255,255,255,0.95)"/>
+  <circle cx="140" cy="120" r="7" fill="rgba(255,255,255,0.6)"/>
+  <!-- Edges -->
+  <line x1="68" y1="75" x2="88" y2="102" stroke="rgba(255,255,255,0.5)" stroke-width="2"/>
+  <line x1="127" y1="61" x2="103" y2="102" stroke="rgba(255,255,255,0.5)" stroke-width="2"/>
+  <line x1="106" y1="114" x2="134" y2="118" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>
+  <line x1="67" y1="66" x2="125" y2="57" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
+  <!-- LB text -->
+  <text x="96" y="165" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="24" font-weight="700" fill="rgba(255,255,255,0.9)" letter-spacing="2">LB</text>
+</svg>

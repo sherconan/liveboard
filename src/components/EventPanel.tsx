@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Sparkles, Loader2, RefreshCw, X, Filter } from 'lucide-react';
 import { NewsItem, NewsTag, fetchLiveNews, extractAllTags } from '../services/news';
+import { StockPulseHotspots } from './StockPulseHotspots';
+import { useLocale } from '../i18n';
 
 // Tag color mapping
 const TAG_COLORS: Record<NewsTag, string> = {
@@ -14,6 +16,7 @@ interface EventPanelProps {
   hotspot: string;
   setHotspot: (val: string) => void;
   onRun: () => void;
+  onRunBatch?: () => void;
   loading: boolean;
   isOpen: boolean;
   hasAnalysis: boolean;
@@ -21,9 +24,10 @@ interface EventPanelProps {
 }
 
 export function EventPanel({
-  hotspot, setHotspot, onRun,
+  hotspot, setHotspot, onRun, onRunBatch,
   loading, isOpen, hasAnalysis, analyzedHotspot,
 }: EventPanelProps) {
+  const { t } = useLocale();
   const [news, setNews] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
@@ -35,13 +39,13 @@ export function EventPanel({
     try {
       const items = await fetchLiveNews();
       setNews(items.length > 0 ? items : []);
-      if (items.length === 0) setNewsError('暂无新闻数据');
+      if (items.length === 0) setNewsError(t('event.news.empty'));
     } catch {
-      setNewsError('新闻加载失败');
+      setNewsError(t('event.news.loadFail'));
     } finally {
       setNewsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadNews();
@@ -60,6 +64,10 @@ export function EventPanel({
 
   const needsRerun = hotspot.trim() && hasAnalysis && hotspot !== analyzedHotspot;
 
+  // Batch mode detection
+  const batchEvents = hotspot.split('\n').map(l => l.trim()).filter(Boolean);
+  const isBatchMode = batchEvents.length > 1;
+
   if (!isOpen) return null;
 
   return (
@@ -71,11 +79,12 @@ export function EventPanel({
       <div className="p-4 space-y-2.5 shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="relative">
           <textarea
+            id="liveboard-event-input"
             value={hotspot}
             onChange={(e) => setHotspot(e.target.value)}
             className="w-full rounded-xl p-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all resize-none h-[72px] leading-relaxed"
             style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-            placeholder="输入或点选新闻，分析市场传导链..."
+            placeholder={t('event.placeholder')}
           />
           {hotspot && (
             <button
@@ -89,18 +98,55 @@ export function EventPanel({
             </button>
           )}
         </div>
-        <button
-          onClick={onRun}
-          disabled={loading || !hotspot.trim()}
-          className={`w-full text-white font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md text-sm ${
-            needsRerun
-              ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400'
-              : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500'
-          }`}
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-          {loading ? '分析中...' : needsRerun ? '重新分析' : '分析传导链'}
-        </button>
+
+        {/* Batch mode badge */}
+        {isBatchMode && (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] font-medium"
+            style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)', color: '#8b5cf6' }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+            {t('batch.detected').replace('{count}', String(batchEvents.length))}
+          </div>
+        )}
+
+        {isBatchMode ? (
+          <div className="flex gap-2">
+            <button
+              onClick={onRun}
+              disabled={loading || !hotspot.trim()}
+              className="flex-1 text-white font-semibold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md text-sm bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {loading ? t('event.analyzing') : t('event.analyze')}
+            </button>
+            <button
+              onClick={onRunBatch}
+              disabled={loading || !hotspot.trim()}
+              className="flex-1 text-white font-semibold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md text-sm bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {t('batch.analyzeAll')}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onRun}
+            disabled={loading || !hotspot.trim()}
+            className={`w-full text-white font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md text-sm ${
+              needsRerun
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400'
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500'
+            }`}
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {loading ? t('event.analyzing') : needsRerun ? t('event.reanalyze') : t('event.analyze')}
+          </button>
+        )}
+      </div>
+
+      {/* StockPulse Hotspots */}
+      <div className="px-3 py-2 shrink-0" style={{ borderBottom: '1px solid var(--border-light)' }}>
+        <StockPulseHotspots onSelectEvent={(title) => { setHotspot(title); }} />
       </div>
 
       {/* News header + tag filters */}
@@ -111,7 +157,7 @@ export function EventPanel({
               <span className="w-2 h-2 rounded-full bg-red-500" />
               <span className="absolute w-2 h-2 rounded-full bg-red-500 animate-ping" />
             </div>
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>事件快讯</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>{t('event.news.title')}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-input)', color: 'var(--text-muted)' }}>
               {filteredNews.length}
             </span>
@@ -124,7 +170,7 @@ export function EventPanel({
                 style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}
               >
                 <X className="w-2.5 h-2.5" />
-                清除
+                {t('event.news.clear')}
               </button>
             )}
             <button
@@ -172,7 +218,7 @@ export function EventPanel({
         {newsError && news.length === 0 && (
           <div className="p-4 text-center">
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{newsError}</p>
-            <button onClick={loadNews} className="text-xs text-blue-500 mt-2 hover:underline">重试</button>
+            <button onClick={loadNews} className="text-xs text-blue-500 mt-2 hover:underline">{t('event.news.retry')}</button>
           </div>
         )}
 
@@ -239,10 +285,10 @@ export function EventPanel({
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <Filter className="w-6 h-6 mb-2" style={{ color: 'var(--text-muted)', opacity: 0.3 }} />
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              「{activeTag}」暂无相关新闻
+              {activeTag} - {t('event.news.noTag')}
             </p>
             <button onClick={() => setActiveTag(null)} className="text-xs text-blue-500 mt-2 hover:underline">
-              查看全部
+              {t('event.news.viewAll')}
             </button>
           </div>
         )}

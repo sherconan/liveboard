@@ -217,7 +217,7 @@ async function runReflection(
 
 // ─── Synthesize ───
 
-function synthesize(views: AgentView[], debate?: DebateResult | null): Omit<SwarmResult, 'views' | 'debate' | 'depth'> {
+function synthesize(views: AgentView[], _debate?: DebateResult | null): Omit<SwarmResult, 'views' | 'debate' | 'depth'> {
   if (views.length === 0) {
     return { consensus: '', divergence: '', confidenceScore: 0 };
   }

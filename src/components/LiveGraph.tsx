@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -16,15 +16,9 @@ import dagre from '@dagrejs/dagre';
 import { SimulationData } from '../services/llm';
 import { TrendingDown, TrendingUp, Minus, Zap, Activity, Globe } from 'lucide-react';
 import { useTheme } from '../theme';
+import { useLocale } from '../i18n';
 
 const typeOrder = ['hotspot', 'variable', 'impact', 'asset'];
-
-const typeLabels: Record<string, string> = {
-  hotspot: '热点事件',
-  variable: '关键变量',
-  impact: '传导效应',
-  asset: '受影标的',
-};
 
 function getIcon(type: string, sentiment?: string) {
   if (type === 'hotspot') return <Globe className="w-4 h-4 text-red-500" />;
@@ -52,8 +46,15 @@ function getNodeStyle(type: string, sentiment?: string) {
 }
 
 const CustomNode = ({ data }: NodeProps) => {
+  const { t } = useLocale();
   const { label, type, sentiment, phase, nodePhase, detail, quote } = data;
-  const typeLabel = typeLabels[type] || type;
+  const typeLabelMap: Record<string, string> = {
+    hotspot: t('graph.hotspot'),
+    variable: t('graph.variable'),
+    impact: t('graph.impact'),
+    asset: t('graph.asset'),
+  };
+  const typeLabel = typeLabelMap[type] || type;
   const style = getNodeStyle(type, sentiment);
   const visible = phase >= nodePhase;
   const appearing = phase === nodePhase;

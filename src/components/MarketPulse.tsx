@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, MessageCircle, ThumbsUp, ArrowUpRight, Loader2, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TrendingUp, MessageCircle, ThumbsUp, Loader2, ExternalLink } from 'lucide-react';
 import { PolymarketMarket, formatProb } from '../services/polymarket';
 import { SocialPost, fetchSocialSentiment, extractSymbols } from '../services/social';
 import { PriceTrend } from './PriceTrend';
+import { useLocale } from '../i18n';
 
 type Tab = 'social' | 'polymarket';
 
@@ -20,6 +21,7 @@ export function MarketPulse({
   matchedMarkets, selectedMarket, onSelectMarket,
   polymarketQueries, suggestedAssets,
 }: MarketPulseProps) {
+  const { t } = useLocale();
   const [tab, setTab] = useState<Tab>('social');
   const [socialPosts, setSocialPosts] = useState<SocialPost[]>([]);
   const [socialLoading, setSocialLoading] = useState(false);
@@ -37,7 +39,6 @@ export function MarketPulse({
   }, [polymarketQueries, suggestedAssets]);
 
   const hasPM = matchedMarkets.length > 0;
-  const hasSocial = socialPosts.length > 0 || socialLoading;
   const trendTokenId = selectedMarket?.clobTokenIds?.[0] || null;
   const trendTitle = selectedMarket?.groupItemTitle || selectedMarket?.question || '';
 
@@ -58,7 +59,7 @@ export function MarketPulse({
           }}
         >
           <MessageCircle className="w-3.5 h-3.5" />
-          社交舆情
+          {t('market.social')}
         </button>
         <button
           onClick={() => setTab('polymarket')}
@@ -70,7 +71,7 @@ export function MarketPulse({
           }}
         >
           <TrendingUp className="w-3.5 h-3.5" />
-          预测市场
+          {t('market.polymarket')}
           {hasPM && (
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 absolute top-1.5 right-3" />
           )}
@@ -109,7 +110,7 @@ export function MarketPulse({
             background: showTrend ? 'var(--accent-soft)' : 'transparent',
           }}
         >
-          {showTrend ? '收起趋势图' : '查看概率趋势'}
+          {showTrend ? t('market.trend.hide') : t('market.trend.show')}
         </button>
       )}
     </div>
@@ -119,6 +120,8 @@ export function MarketPulse({
 // ─── Social Tab ───
 
 function SocialTab({ posts, loading }: { posts: SocialPost[]; loading: boolean }) {
+  const { t } = useLocale();
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -131,7 +134,7 @@ function SocialTab({ posts, loading }: { posts: SocialPost[]; loading: boolean }
     return (
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <MessageCircle className="w-8 h-8 mb-3" style={{ color: 'var(--text-muted)', opacity: 0.3 }} />
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>暂无相关社交讨论</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('market.social.empty')}</p>
       </div>
     );
   }
@@ -163,7 +166,7 @@ function SocialTab({ posts, loading }: { posts: SocialPost[]; loading: boolean }
                   color: post.sentiment === 'Bullish' ? 'var(--success)' : 'var(--danger)',
                 }}
               >
-                {post.sentiment === 'Bullish' ? '看涨' : '看跌'}
+                {post.sentiment === 'Bullish' ? t('market.sentiment.bullish') : t('market.sentiment.bearish')}
               </span>
             )}
             <span className="text-[9px] ml-auto" style={{ color: 'var(--text-muted)' }}>{post.time}</span>
@@ -210,13 +213,15 @@ function PolymarketTab({
   selectedMarket: PolymarketMarket | null;
   onSelect: (m: PolymarketMarket) => void;
 }) {
+  const { t } = useLocale();
+
   if (markets.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
         <TrendingUp className="w-8 h-8 mb-3" style={{ color: 'var(--text-muted)', opacity: 0.3 }} />
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>未找到相关预测市场</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('market.polymarket.empty')}</p>
         <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
-          Polymarket 以欧美事件为主，部分中国新闻可能无法匹配
+          {t('market.polymarket.hint')}
         </p>
       </div>
     );

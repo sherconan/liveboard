@@ -1,27 +1,29 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Loader2, Clock } from 'lucide-react';
 import { fetchPriceHistory, PricePoint } from '../services/polymarket';
 import { useTheme } from '../theme';
+import { useLocale } from '../i18n';
 
 interface PriceTrendProps {
   tokenId: string | null;
   marketTitle: string;
 }
 
-const INTERVALS = [
-  { label: '1天', value: '1d' as const },
-  { label: '1周', value: '1w' as const },
-  { label: '1月', value: '1m' as const },
-  { label: '3月', value: '3m' as const },
-];
-
 export function PriceTrend({ tokenId, marketTitle }: PriceTrendProps) {
   const { isDark } = useTheme();
+  const { t, locale } = useLocale();
   const [data, setData] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [interval, setInterval] = useState<'1d' | '1w' | '1m' | '3m'>('1m');
   const [error, setError] = useState<string | null>(null);
+
+  const INTERVALS = [
+    { label: t('trend.1d'), value: '1d' as const },
+    { label: t('trend.1w'), value: '1w' as const },
+    { label: t('trend.1m'), value: '1m' as const },
+    { label: t('trend.3m'), value: '3m' as const },
+  ];
 
   const load = useCallback(async () => {
     if (!tokenId) return;
@@ -30,20 +32,20 @@ export function PriceTrend({ tokenId, marketTitle }: PriceTrendProps) {
     try {
       const history = await fetchPriceHistory(tokenId, interval, 80);
       setData(history);
-    } catch (err: any) {
-      setError(err.message || '加载失败');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : t('error.loadFail'));
       setData([]);
     } finally {
       setLoading(false);
     }
-  }, [tokenId, interval]);
+  }, [tokenId, interval, t]);
 
   useEffect(() => { load(); }, [load]);
 
   if (!tokenId) {
     return (
       <div className="h-full flex items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>
-        选择一个 Polymarket 事件查看概率趋势
+        {t('market.trend.select')}
       </div>
     );
   }
@@ -54,10 +56,12 @@ export function PriceTrend({ tokenId, marketTitle }: PriceTrendProps) {
   const change = latestProb - firstProb;
   const isUp = change >= 0;
 
+  const localeStr = locale === 'zh' ? 'zh-CN' : 'en-US';
+
   const formatTime = (ts: number) => {
     const d = new Date(ts);
-    if (interval === '1d') return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+    if (interval === '1d') return d.toLocaleTimeString(localeStr, { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString(localeStr, { month: 'short', day: 'numeric' });
   };
 
   const tickColor = isDark ? '#475569' : '#94a3b8';
@@ -109,7 +113,7 @@ export function PriceTrend({ tokenId, marketTitle }: PriceTrendProps) {
         ) : error ? (
           <div className="h-full flex items-center justify-center text-red-500 text-sm">{error}</div>
         ) : chartData.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>暂无数据</div>
+          <div className="h-full flex items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>{t('market.trend.nodata')}</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
@@ -122,8 +126,8 @@ export function PriceTrend({ tokenId, marketTitle }: PriceTrendProps) {
               <XAxis dataKey="time" tickFormatter={formatTime} tick={{ fontSize: 10, fill: tickColor }} axisLine={false} tickLine={false} minTickGap={40} />
               <YAxis domain={[0, 1]} tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`} tick={{ fontSize: 10, fill: tickColor }} axisLine={false} tickLine={false} width={40} />
               <Tooltip
-                labelFormatter={(ts: number) => new Date(ts).toLocaleString('zh-CN')}
-                formatter={(value: number) => [`${(value * 100).toFixed(1)}%`, '概率']}
+                labelFormatter={(ts) => new Date(ts as number).toLocaleString(localeStr)}
+                formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, t('market.probability')]}
                 contentStyle={{
                   fontSize: 12,
                   borderRadius: 8,

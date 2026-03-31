@@ -1,227 +1,86 @@
-import React, { useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Newspaper, Sparkles } from 'lucide-react';
 import { Header } from './components/Header';
 import { EventPanel } from './components/EventPanel';
 import { LiveGraph } from './components/LiveGraph';
 import { SummaryPanel } from './components/SummaryPanel';
 import { MarketPulse } from './components/MarketPulse';
-import { PolymarketMarket, searchEvents } from './services/polymarket';
-import { SimulationData, Variable, Analysis, callLLM, extractJSON, buildLayer1Prompt, buildLayer2Prompt, buildLayer3Prompt, buildInsightPrompt } from './services/llm';
-import { SwarmResult, runSwarmAnalysis } from './services/swarm';
-import { fetchAssetQuotes, QuoteData } from './services/quotes';
-
-const EMPTY_DATA: SimulationData = {
-  scenarios: [], nodes: [], edges: [], summary: '', coreActions: [],
-};
+import { HistoryDrawer } from './components/HistoryDrawer';
+import { CompareMode } from './components/CompareMode';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { BatchResults } from './components/BatchResults';
+import { ShortcutsHelpModal } from './components/ShortcutsHelpModal';
+import { TemplateSelector } from './components/TemplateSelector';
+import { ShareModal } from './components/ShareModal';
+import { useAnalysis } from './hooks/useAnalysis';
+import { useKeyboardShortcuts, buildShortcutRegistry } from './hooks/useKeyboardShortcuts';
+import { exportToPNG, exportToPDF } from './services/exportService';
+import { useLocale } from './i18n';
 
 export default function App() {
-  const [hotspot, setHotspot] = useState('');
-  const [variables, setVariables] = useState<Variable[]>([]);
-  const [targetAssets, setTargetAssets] = useState('');
-  const [data, setData] = useState<SimulationData>(EMPTY_DATA);
-  const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [shouldAnimate, setShouldAnimate] = useState(false);
-  const [analyses, setAnalyses] = useState<Analysis[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(-1);
-  const [matchedMarkets, setMatchedMarkets] = useState<PolymarketMarket[]>([]);
-  const [selectedMarket, setSelectedMarket] = useState<PolymarketMarket | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [analyzedHotspot, setAnalyzedHotspot] = useState('');
-  const [swarmResult, setSwarmResult] = useState<SwarmResult | null>(null);
-  const [swarmLoading, setSwarmLoading] = useState(false);
-  const [assetQuotes, setAssetQuotes] = useState<Map<string, QuoteData>>(new Map());
+  const { t } = useLocale();
 
-  // When user picks a different news, clear old results
-  const handleSetHotspot = useCallback((val: string) => {
-    setHotspot(val);
-    if (val !== analyzedHotspot) {
-      setData(EMPTY_DATA);
-      setMatchedMarkets([]);
-      setSelectedMarket(null);
-      setSwarmResult(null);
-      setError(null);
-    }
-  }, [analyzedHotspot]);
+  const {
+    sidebarOpen, setSidebarOpen,
+    hotspot, setHotspot, data, loading, loadingStep, error, setError,
+    shouldAnimate, analyses, currentIndex, matchedMarkets, selectedMarket,
+    analyzedHotspot, swarmResult, swarmLoading, assetQuotes, targetAssets,
+    historyItems, historyOpen, compareOpen,
+    compareLeft, setCompareLeft, compareRight, setCompareRight,
+    eventSource, setEventSource,
+    hasData,
+    batchState, runBatchSimulation, setBatchActiveTab, clearBatch,
+    runSimulation, loadAnalysis, handleExport,
+    handleSelectMarket, handleReplayHistory, handleCompareFromHistory, refreshHistory,
+    navigate,
+  } = useAnalysis();
 
-  const matchPolymarkets = useCallback(async (queries: string[]) => {
-    if (!queries?.length) return;
-    try {
-      const allMarkets: PolymarketMarket[] = [];
-      const seen = new Set<string>();
-      for (const query of queries.slice(0, 4)) {
-        try {
-          const events = await searchEvents(query, 5);
-          for (const e of events) {
-            for (const m of e.markets) {
-              if (!seen.has(m.id) && m.volume24hr > 1000) {
-                seen.add(m.id);
-                allMarkets.push(m);
-              }
-            }
-          }
-        } catch {}
-      }
-      allMarkets.sort((a, b) => b.volume24hr - a.volume24hr);
-      setMatchedMarkets(allMarkets.slice(0, 6));
-    } catch {
-      setMatchedMarkets([]);
-    }
-  }, []);
+  // ── Keyboard shortcuts ──
+  const shortcutRegistry = useMemo(() => {
+    const reg = buildShortcutRegistry();
 
-  // Helper: truncate node labels
-  const normNodes = (nodes: any[]) => nodes.map((n: any) => ({
-    ...n, label: n.label?.length > 10 ? n.label.slice(0, 10) : (n.label || ''),
-  }));
-
-  const runSimulation = useCallback(async () => {
-    if (!hotspot.trim()) { setError('请输入一条事件性新闻'); return; }
-    setLoading(true);
-    setError(null);
-    setShouldAnimate(true);
-    setMatchedMarkets([]);
-    setSelectedMarket(null);
-    setSwarmResult(null);
-    setSwarmLoading(true);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 180000);
-
-    // ── Launch swarm in parallel (streams each agent as it finishes) ──
-    runSwarmAnalysis(hotspot, controller.signal, (partial) => setSwarmResult(partial))
-      .then(result => setSwarmResult(result))
-      .catch(() => {})
-      .finally(() => setSwarmLoading(false));
-
-    // Accumulate nodes/edges across layers
-    let allNodes: any[] = [];
-    let allEdges: any[] = [];
-    let pmQueries: string[] = [];
-    let sugAssets = '';
-
-    const pushGraph = (newNodes: any[], newEdges: any[]) => {
-      allNodes = [...allNodes, ...normNodes(newNodes)];
-      allEdges = [...allEdges, ...newEdges];
-      setData({
-        scenarios: [],
-        nodes: allNodes,
-        edges: allEdges,
-        summary: '',
-        coreActions: [],
-        suggestedAssets: sugAssets,
-        polymarketQueries: pmQueries,
-      });
+    reg.analyze.handler = () => runSimulation();
+    reg.history.handler = () => {
+      if (historyOpen) navigate('/');
+      else navigate('/history');
     };
+    reg.exportPNG.handler = () => exportToPNG('liveboard-main-content');
+    reg.exportPDF.handler = () => exportToPDF();
+    reg.escape.handler = () => {
+      if (historyOpen || compareOpen) navigate('/');
+      if (loading) setError(null);
+    };
+    reg.focusInput.handler = () => {
+      const el = document.querySelector<HTMLTextAreaElement>('#liveboard-event-input');
+      el?.focus();
+    };
+    reg.focusInputVim.handler = reg.focusInput.handler;
 
-    try {
-      // ── Layer 0+1: Hotspot + Variables (~3-5s) ──
-      setLoadingStep('识别事件与变量...');
-      const { system: s1, user: u1 } = buildLayer1Prompt(hotspot, variables);
-      const r1 = extractJSON(await callLLM(s1, u1, controller.signal, 0));
+    return reg;
+  }, [runSimulation, historyOpen, compareOpen, loading, navigate, setError]);
 
-      if (r1.polymarketQueries) pmQueries = r1.polymarketQueries;
-      pushGraph(r1.nodes || [], r1.edges || []);
-      setAnalyzedHotspot(hotspot);
-      setLoading(false); // ← graph visible now!
+  const { helpOpen, setHelpOpen } = useKeyboardShortcuts(shortcutRegistry);
 
-      // Fire Polymarket in background
-      if (pmQueries.length) matchPolymarkets(pmQueries);
+  // ── Share modal ──
+  const [shareOpen, setShareOpen] = useState(false);
+  const shareReportData = useMemo(() => {
+    if (!hasData || !analyzedHotspot) return null;
+    return {
+      hotspot: analyzedHotspot,
+      timestamp: analyses[currentIndex]?.timestamp || Date.now(),
+      data,
+      matchedMarkets: matchedMarkets?.map(m => ({
+        question: m.question || m.title || '',
+        yes_probability: m.yes_probability ?? m.outcomePrices?.[0] ?? 0,
+      })),
+    };
+  }, [hasData, analyzedHotspot, data, analyses, currentIndex, matchedMarkets]);
 
-      // ── Layer 2: Impacts (~3-5s) ──
-      setLoadingStep('推导传导效应...');
-      const { system: s2, user: u2 } = buildLayer2Prompt(hotspot, allNodes);
-      const r2 = extractJSON(await callLLM(s2, u2, controller.signal, 0));
-      pushGraph(r2.nodes || [], r2.edges || []);
-
-      // ── Layer 3: Assets (~3-5s) ──
-      setLoadingStep('确定受影响标的...');
-      const { system: s3, user: u3 } = buildLayer3Prompt(hotspot, allNodes, targetAssets);
-      const r3 = extractJSON(await callLLM(s3, u3, controller.signal, 0));
-      if (r3.suggestedAssets) {
-        sugAssets = r3.suggestedAssets;
-        setTargetAssets(sugAssets);
-      }
-      pushGraph(r3.nodes || [], r3.edges || []);
-
-      // ── Fetch real-time quotes for asset nodes (non-blocking) ──
-      const assetLabels = allNodes.filter(n => n.type === 'asset').map(n => n.label);
-      if (assetLabels.length > 0) {
-        fetchAssetQuotes(assetLabels).then(quotes => setAssetQuotes(quotes)).catch(() => {});
-      }
-
-      // ── Final: Trading insight (~3-5s) ──
-      setLoadingStep('生成交易判断...');
-      const { system: s4, user: u4 } = buildInsightPrompt(hotspot, allNodes, allEdges);
-      const r4 = extractJSON(await callLLM(s4, u4, controller.signal, 0));
-
-      let summary = r4.summary || '';
-      if (summary.length > 50) {
-        const t = summary.slice(0, 50);
-        const lp = Math.max(t.lastIndexOf('，'), t.lastIndexOf('。'), t.lastIndexOf('！'), t.lastIndexOf('、'));
-        summary = lp > 20 ? t.slice(0, lp + 1) : t;
-      }
-
-      const fullData: SimulationData = {
-        scenarios: r4.scenarios || [],
-        nodes: allNodes,
-        edges: allEdges,
-        summary,
-        coreActions: r4.coreActions || [],
-        suggestedAssets: sugAssets,
-        polymarketQueries: pmQueries,
-      };
-      setData(fullData);
-
-      // Save history
-      setAnalyses(prev => [{
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-        hotspot,
-        data: fullData,
-        eventTitle: hotspot,
-      }, ...prev]);
-      setCurrentIndex(0);
-
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        setError('请求超时，请检查 LLM 服务是否运行中');
-      } else {
-        setError(err.message || '推演失败');
-      }
-    } finally {
-      clearTimeout(timeout);
-      setLoading(false);
-      setLoadingStep('');
-    }
-  }, [hotspot, variables, targetAssets, matchPolymarkets]);
-
-  const loadAnalysis = useCallback((index: number) => {
-    const a = analyses[index];
-    if (!a) return;
-    setCurrentIndex(index);
-    setData(a.data);
-    setHotspot(a.hotspot);
-    setAnalyzedHotspot(a.hotspot);
-    setShouldAnimate(false);
-  }, [analyses]);
-
-  const handleExport = useCallback(() => {
-    if (!data.nodes.length) return;
-    const blob = new Blob([JSON.stringify({ hotspot, timestamp: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `liveboard-${hotspot.slice(0, 20).replace(/\s/g, '_')}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [data, hotspot]);
-
-  const handleSelectMarket = useCallback((m: PolymarketMarket) => {
-    setSelectedMarket(m);
-  }, []);
-
-  const hasData = data.nodes.length > 0;
+  // ── Template selector ──
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const handleTemplateSelect = useCallback((text: string) => {
+    setHotspot(text);
+  }, [setHotspot]);
 
   return (
     <div className="grain-overlay flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
@@ -234,13 +93,21 @@ export default function App() {
         currentIndex={currentIndex}
         onSelectAnalysis={loadAnalysis}
         onExport={handleExport}
+        historyCount={historyItems.length}
+        onOpenHistory={() => navigate('/history')}
+        onOpenCompare={() => { setCompareLeft(null); setCompareRight(null); navigate('/compare'); }}
+        onOpenTemplates={() => setTemplateOpen(true)}
+        onOpenShare={() => setShareOpen(true)}
+        hasAnalysis={hasData}
+        shortcutRegistry={shortcutRegistry}
       />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div id="liveboard-main-content" className="flex flex-1 overflow-hidden">
         <EventPanel
           hotspot={hotspot}
-          setHotspot={handleSetHotspot}
+          setHotspot={setHotspot}
           onRun={runSimulation}
+          onRunBatch={runBatchSimulation}
           loading={loading}
           isOpen={sidebarOpen}
           hasAnalysis={hasData}
@@ -248,6 +115,27 @@ export default function App() {
         />
 
         <main className="flex-1 flex flex-col relative overflow-hidden">
+          {/* Event Bridge source badge */}
+          {eventSource === 'stockpulse' && (
+            <div className="absolute top-3 right-3 z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md text-[11px] font-medium"
+              style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', color: 'rgb(59,130,246)' }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              {t('stockpulse.badge')}
+              <button
+                onClick={() => setEventSource(null)}
+                className="ml-1 opacity-50 hover:opacity-100 text-xs leading-none"
+              >&times;</button>
+            </div>
+          )}
+
+          {/* Batch results tab bar */}
+          <BatchResults
+            batchState={batchState}
+            onSelectTab={setBatchActiveTab}
+            onClose={clearBatch}
+          />
+
           {error && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm flex items-center gap-3 backdrop-blur-md"
               style={{ background: 'var(--danger-soft)', border: '1px solid var(--danger)', color: 'var(--danger)' }}
@@ -265,10 +153,10 @@ export default function App() {
               </div>
               <div className="text-center max-w-md">
                 <p className="text-lg font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                  从左侧选择一条新闻开始分析
+                  {t('empty.title')}
                 </p>
                 <p className="text-sm mt-2 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                  选择实时新闻 → AI 分析因果传导链 → 生成决策图
+                  {t('empty.subtitle')}
                 </p>
               </div>
             </div>
@@ -293,17 +181,17 @@ export default function App() {
                 {/* Step text */}
                 <div className="space-y-2">
                   <p className="text-base font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-                    {loadingStep || '准备中...'}
+                    {loadingStep || t('loading.preparing')}
                   </p>
                   <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    多 Agent 协同分析 · 通常 20-40 秒
+                    {t('loading.subtitle')}
                   </p>
                 </div>
 
                 {/* Progress steps */}
                 <div className="flex justify-center gap-6 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                  {['识别事件', '推演传导', '确定标的', '交易判断'].map((step, i) => {
-                    const keywords = ['识别', '推导', '确定', '交易'];
+                  {[t('loading.step1'), t('loading.step2'), t('loading.step3'), t('loading.step4')].map((step, i) => {
+                    const keywords = [t('loading.layer1').slice(0, 2), t('loading.layer2').slice(0, 2), t('loading.layer3').slice(0, 2), t('loading.insight').slice(0, 2)];
                     const isActive = loadingStep.includes(keywords[i]);
                     const isPast = loadingStep && !isActive &&
                       keywords.findIndex(k => loadingStep.includes(k)) > i;
@@ -317,7 +205,7 @@ export default function App() {
                             boxShadow: isActive ? '0 0 12px rgba(59,130,246,0.4)' : 'none',
                           }}
                         >
-                          {isPast ? '✓' : i + 1}
+                          {isPast ? '\u2713' : i + 1}
                         </div>
                         <span className={isActive ? 'font-medium' : ''} style={{ color: isActive ? 'var(--accent)' : undefined }}>
                           {step}
@@ -339,30 +227,30 @@ export default function App() {
 
           {/* Graph + Market Pulse right panel */}
           {hasData && (
-            <div className="flex-1 flex min-h-0">
-              <div className="flex-1 min-w-0 relative">
-                <LiveGraph data={data} animate={shouldAnimate} assetQuotes={assetQuotes} />
-                {/* Step 2 indicator — shows while generating insights after graph is visible */}
-                {loadingStep && !loading && (
-                  <div
-                    className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md text-xs font-medium"
-                    style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border)', color: 'var(--accent)' }}
-                  >
-                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-                    {loadingStep}
-                  </div>
-                )}
-              </div>
+            <ErrorBoundary fallbackTitle="图表渲染出错">
+              <div className="flex-1 flex min-h-0">
+                <div className="flex-1 min-w-0 relative">
+                  <LiveGraph data={data} animate={shouldAnimate} assetQuotes={assetQuotes} />
+                  {loadingStep && !loading && (
+                    <div
+                      className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md text-xs font-medium"
+                      style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border)', color: 'var(--accent)' }}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                      {loadingStep}
+                    </div>
+                  )}
+                </div>
 
-              {/* Right panel — always visible when analysis exists */}
-              <MarketPulse
-                matchedMarkets={matchedMarkets}
-                selectedMarket={selectedMarket}
-                onSelectMarket={handleSelectMarket}
-                polymarketQueries={data.polymarketQueries || []}
-                suggestedAssets={data.suggestedAssets || targetAssets}
-              />
-            </div>
+                <MarketPulse
+                  matchedMarkets={matchedMarkets}
+                  selectedMarket={selectedMarket}
+                  onSelectMarket={handleSelectMarket}
+                  polymarketQueries={data.polymarketQueries || []}
+                  suggestedAssets={data.suggestedAssets || targetAssets}
+                />
+              </div>
+            </ErrorBoundary>
           )}
 
           {/* Summary panel at bottom */}
@@ -378,6 +266,55 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* History Drawer */}
+      <ErrorBoundary fallbackTitle="历史记录加载出错">
+        <HistoryDrawer
+          isOpen={historyOpen}
+          onClose={() => navigate('/')}
+          items={historyItems}
+          onReplay={handleReplayHistory}
+          onCompare={handleCompareFromHistory}
+          onHistoryChange={refreshHistory}
+          currentHotspot={analyzedHotspot}
+        />
+      </ErrorBoundary>
+
+      {/* Compare Mode */}
+      <ErrorBoundary fallbackTitle="对比模式加载出错">
+        <CompareMode
+          isOpen={compareOpen}
+          onClose={() => navigate('/')}
+          leftItem={compareLeft}
+          rightItem={compareRight}
+          allItems={historyItems}
+          currentData={hasData ? data : null}
+          currentHotspot={analyzedHotspot}
+          onSelectLeft={setCompareLeft}
+          onSelectRight={setCompareRight}
+        />
+      </ErrorBoundary>
+
+      {/* Keyboard shortcuts help modal */}
+      <ShortcutsHelpModal
+        isOpen={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        registry={shortcutRegistry}
+      />
+
+      {/* Event template selector */}
+      <TemplateSelector
+        isOpen={templateOpen}
+        onClose={() => setTemplateOpen(false)}
+        onSelect={handleTemplateSelect}
+      />
+
+      {/* Share report modal */}
+      <ShareModal
+        isOpen={shareOpen}
+        onClose={() => setShareOpen(false)}
+        reportData={shareReportData}
+      />
     </div>
   );
 }
