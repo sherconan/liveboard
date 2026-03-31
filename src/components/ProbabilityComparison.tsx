@@ -1,12 +1,14 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Scale, AlertTriangle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useLocale } from '../i18n';
 
 interface ProbabilityComparisonProps {
   scenarios: { name: string; probability: number; rationale?: string; marketProb?: number }[];
 }
 
 export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps) {
+  const { t } = useLocale();
+
   if (scenarios.length === 0) return null;
 
   const hasMarketData = scenarios.some(s => s.marketProb !== undefined);
@@ -15,7 +17,7 @@ export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps)
     <section>
       <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
         <Scale className="w-4 h-4" />
-        {hasMarketData ? '概率对比 · AI vs 市场' : '概率温度计'}
+        {hasMarketData ? t('prob.title.compare') : t('prob.title.simple')}
       </h2>
       <div className="space-y-4">
         {scenarios.map((scenario, idx) => {
@@ -37,7 +39,7 @@ export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps)
 
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px]">
-                  <span className="uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>AI 推演</span>
+                  <span className="uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{t('prob.ai')}</span>
                   <span className="metric-delta text-blue-500">{aiProb}%</span>
                 </div>
                 <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'var(--bg-input)' }}>
@@ -53,7 +55,7 @@ export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps)
               {hasMkt && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px]">
-                    <span className="uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>市场共识</span>
+                    <span className="uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{t('prob.market')}</span>
                     <span className="metric-delta text-emerald-500">{(marketProb * 100).toFixed(1)}%</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'var(--bg-input)' }}>
@@ -80,9 +82,9 @@ export function ProbabilityComparison({ scenarios }: ProbabilityComparisonProps)
                    divergence < 0 ? <TrendingDown className="w-3 h-3 shrink-0" /> :
                    <Minus className="w-3 h-3 shrink-0" />}
                   <span>
-                    {absDivergence < 2 ? 'AI 与市场一致' :
-                     divergence > 0 ? `AI 认为被低估 +${divergence.toFixed(0)}%` :
-                     `AI 认为被高估 ${divergence.toFixed(0)}%`}
+                    {absDivergence < 2 ? t('prob.agree') :
+                     divergence > 0 ? `${t('prob.undervalued')} +${divergence.toFixed(0)}%` :
+                     `${t('prob.overvalued')} ${divergence.toFixed(0)}%`}
                   </span>
                 </div>
               )}

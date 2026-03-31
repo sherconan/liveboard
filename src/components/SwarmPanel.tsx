@@ -1,27 +1,36 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, Users, MessageSquare, RefreshCw, Loader2 } from 'lucide-react';
-import { SwarmResult, AgentView, ANALYST_AGENTS } from '../services/swarm';
+import { SwarmResult, ANALYST_AGENTS } from '../services/swarm';
+import { useLocale } from '../i18n';
 
 interface SwarmPanelProps {
   swarm: SwarmResult | null;
   loading: boolean;
 }
 
-const DEPTH_LABELS = {
-  initial: { text: '独立分析', color: 'var(--text-muted)' },
-  debated: { text: '辩论完成', color: 'var(--warning)' },
-  reflected: { text: '反思修正', color: 'var(--success)' },
-};
-
 export function SwarmPanel({ swarm, loading }: SwarmPanelProps) {
+  const { t } = useLocale();
+
+  const DEPTH_LABELS = {
+    initial: { text: t('swarm.depth.initial'), color: 'var(--text-muted)' },
+    debated: { text: t('swarm.depth.debated'), color: 'var(--warning)' },
+    reflected: { text: t('swarm.depth.reflected'), color: 'var(--success)' },
+  };
+
+  const agentNames: Record<string, string> = {
+    macro: t('agent.macro'),
+    sector: t('agent.sector'),
+    trader: t('agent.trader'),
+    risk: t('agent.risk'),
+  };
+
   if (loading && !swarm) {
     return (
       <div className="px-5 py-4">
         <div className="flex items-center gap-2 mb-3">
           <Users className="w-4 h-4 text-blue-500" />
           <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-            多视角分析中...
+            {t('swarm.analyzing')}
           </span>
         </div>
         <div className="grid grid-cols-4 gap-2">
@@ -29,7 +38,7 @@ export function SwarmPanel({ swarm, loading }: SwarmPanelProps) {
             <div key={a.id} className="rounded-lg p-3 animate-pulse" style={{ background: 'var(--bg-input)' }}>
               <div className="text-center">
                 <span className="text-lg">{a.emoji}</span>
-                <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>{a.name}</p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>{agentNames[a.id] || a.name}</p>
               </div>
             </div>
           ))}
@@ -52,7 +61,7 @@ export function SwarmPanel({ swarm, loading }: SwarmPanelProps) {
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-blue-500" />
           <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-            多视角 Agent 分析
+            {t('swarm.title')}
           </span>
           {/* Depth badge */}
           <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-1"
@@ -106,7 +115,7 @@ export function SwarmPanel({ swarm, loading }: SwarmPanelProps) {
                   <Minus className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
                 )}
               </div>
-              <p className="text-[10px] font-semibold mb-1" style={{ color: agent.color }}>{agent.name}</p>
+              <p className="text-[10px] font-semibold mb-1" style={{ color: agent.color }}>{agentNames[agent.id] || agent.name}</p>
               <p className="text-[10.5px] leading-[1.5] line-clamp-2" style={{ color: 'var(--text-primary)' }}>
                 {view.oneLiner}
               </p>
@@ -122,14 +131,14 @@ export function SwarmPanel({ swarm, loading }: SwarmPanelProps) {
                 className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
                 style={{ background: 'var(--tooltip-bg)', border: '1px solid var(--tooltip-border)', boxShadow: 'var(--shadow-lg)' }}
               >
-                <p className="text-[11px] font-semibold mb-1" style={{ color: agent.color }}>{agent.name}</p>
+                <p className="text-[11px] font-semibold mb-1" style={{ color: agent.color }}>{agentNames[agent.id] || agent.name}</p>
                 <p className="text-[10.5px] leading-[1.6] mb-2" style={{ color: 'var(--text-primary)' }}>{view.reasoning}</p>
                 <div className="space-y-1 text-[10px]">
                   <p style={{ color: 'var(--text-muted)' }}>
-                    <span className="font-semibold" style={{ color: 'var(--warning)' }}>风险：</span>{view.keyRisk}
+                    <span className="font-semibold" style={{ color: 'var(--warning)' }}>{t('swarm.tooltip.risk')}</span>{view.keyRisk}
                   </p>
                   <p style={{ color: 'var(--text-muted)' }}>
-                    <span className="font-semibold" style={{ color: 'var(--success)' }}>操作：</span>{view.topPick}
+                    <span className="font-semibold" style={{ color: 'var(--success)' }}>{t('swarm.tooltip.action')}</span>{view.topPick}
                   </p>
                 </div>
               </div>
@@ -150,26 +159,26 @@ export function SwarmPanel({ swarm, loading }: SwarmPanelProps) {
           <div className="flex items-center gap-1.5">
             <MessageSquare className="w-3.5 h-3.5" style={{ color: 'var(--accent)' }} />
             <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent)' }}>
-              投委会辩论
+              {t('swarm.debate')}
             </span>
             {swarm.depth === 'reflected' && (
               <span className="text-[9px] flex items-center gap-0.5 ml-auto" style={{ color: 'var(--success)' }}>
                 <RefreshCw className="w-2.5 h-2.5" />
-                已反思修正
+                {t('swarm.debate.reflected')}
               </span>
             )}
           </div>
           <div className="space-y-1.5 text-[11px] leading-[1.6]">
             <p style={{ color: 'var(--text-secondary)' }}>
-              <span className="font-semibold" style={{ color: 'var(--warning)' }}>矛盾点：</span>
+              <span className="font-semibold" style={{ color: 'var(--warning)' }}>{t('swarm.debate.contradictions')}</span>
               {swarm.debate.contradictions}
             </p>
             <p style={{ color: 'var(--text-secondary)' }}>
-              <span className="font-semibold" style={{ color: 'var(--danger)' }}>盲区：</span>
+              <span className="font-semibold" style={{ color: 'var(--danger)' }}>{t('swarm.debate.blindSpots')}</span>
               {swarm.debate.blindSpots}
             </p>
             <p className="rounded px-2 py-1.5" style={{ background: 'var(--accent-soft)', color: 'var(--text-primary)' }}>
-              <span className="font-semibold" style={{ color: 'var(--accent)' }}>追问：</span>
+              <span className="font-semibold" style={{ color: 'var(--accent)' }}>{t('swarm.debate.probingQuestion')}</span>
               {swarm.debate.probingQuestion}
             </p>
           </div>
@@ -179,11 +188,11 @@ export function SwarmPanel({ swarm, loading }: SwarmPanelProps) {
       {/* Consensus + Risk */}
       <div className="flex gap-2 text-[11px]">
         <div className="flex-1 rounded-lg px-3 py-2" style={{ background: 'var(--accent-soft)' }}>
-          <span className="font-semibold" style={{ color: 'var(--accent)' }}>共识：</span>
+          <span className="font-semibold" style={{ color: 'var(--accent)' }}>{t('swarm.consensus')}</span>
           <span style={{ color: 'var(--text-secondary)' }}>{swarm.consensus}</span>
           {swarm.divergence && swarm.divergence !== '所有分析师观点一致' && (
             <p className="mt-1" style={{ color: 'var(--text-muted)' }}>
-              <span className="font-semibold" style={{ color: 'var(--warning)' }}>分歧：</span>{swarm.divergence}
+              <span className="font-semibold" style={{ color: 'var(--warning)' }}>{t('swarm.divergence')}</span>{swarm.divergence}
             </p>
           )}
         </div>
@@ -195,7 +204,7 @@ export function SwarmPanel({ swarm, loading }: SwarmPanelProps) {
         >
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-500" />
           <div>
-            <span className="font-semibold text-red-500">风控警示：</span>
+            <span className="font-semibold text-red-500">{t('swarm.risk')}</span>
             <span style={{ color: 'var(--text-secondary)' }}>{swarm.riskAlert}</span>
           </div>
         </div>

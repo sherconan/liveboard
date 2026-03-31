@@ -329,3 +329,74 @@ body {
   transition: color 0.3s ease;
   display: inline-block;
 }
+
+/* ─── Print styles for PDF export ─── */
+@media print {
+  /* Hide navigation, sidebar, and controls */
+  header,
+  .no-export,
+  [class*="EventPanel"],
+  [class*="MarketPulse"],
+  [class*="HistoryDrawer"],
+  [class*="CompareMode"] {
+    display: none !important;
+  }
+
+  /* Reset page layout */
+  body {
+    background: white !important;
+    color: #1e293b !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Expand main content */
+  .grain-overlay {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  #liveboard-main-content {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Make graph fill the page */
+  .react-flow {
+    height: 60vh !important;
+    break-inside: avoid;
+  }
+
+  /* Summary panel */
+  [class*="SummaryPanel"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Clean page margins */
+  @page {
+    margin: 1cm;
+    size: landscape;
+  }
+
+  /* Remove glass effects in print */
+  .glass {
+    background: white !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Remove grain overlay */
+  .grain-overlay::after {
+    display: none !important;
+  }
+
+  /* Remove animations */
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
