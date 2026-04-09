@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+STATUS.md
+test-results/
