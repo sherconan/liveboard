@@ -47,7 +47,7 @@ function getNodeStyle(type: string, sentiment?: string) {
 
 const CustomNode = ({ data }: NodeProps) => {
   const { t } = useLocale();
-  const { label, type, sentiment, phase, nodePhase, detail, quote } = data;
+  const { label, type, sentiment, phase, nodePhase, detail, quote, highlighted } = data;
   const typeLabelMap: Record<string, string> = {
     hotspot: t('graph.hotspot'),
     variable: t('graph.variable'),
@@ -66,11 +66,14 @@ const CustomNode = ({ data }: NodeProps) => {
         transition-all duration-700 ease-out
         ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}
         ${appearing ? 'ring-1 ring-blue-500/20' : ''}
+        ${highlighted ? 'ring-2 ring-blue-500 shadow-lg shadow-blue-500/20' : ''}
       `}
       style={{
         background: style.bg,
-        border: `1px solid ${style.border}`,
+        border: highlighted ? '2px solid var(--accent)' : `1px solid ${style.border}`,
         backdropFilter: 'blur(8px)',
+        transform: highlighted ? 'scale(1.05)' : undefined,
+        zIndex: highlighted ? 10 : undefined,
       }}
     >
       <Handle type="target" position={Position.Top} className="w-2 h-2 !bg-transparent !border-0 !opacity-0" />
@@ -135,9 +138,10 @@ interface LiveGraphProps {
   data: SimulationData;
   animate?: boolean;
   assetQuotes?: Map<string, any>;
+  highlightedNodeIds?: string[];
 }
 
-export function LiveGraph({ data, animate = false, assetQuotes }: LiveGraphProps) {
+export function LiveGraph({ data, animate = false, assetQuotes, highlightedNodeIds }: LiveGraphProps) {
   const { isDark } = useTheme();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -182,6 +186,9 @@ export function LiveGraph({ data, animate = false, assetQuotes }: LiveGraphProps
         quote: n.type === 'asset' && assetQuotes?.get(n.label) || undefined,
         phase: phaseRef.current,
         nodePhase: nodePhaseMap[n.id],
+        highlighted: highlightedNodeIds && highlightedNodeIds.length > 0
+          ? highlightedNodeIds.includes(n.id)
+          : false,
       },
       position: { x: 0, y: 0 },
     }));
@@ -216,7 +223,7 @@ export function LiveGraph({ data, animate = false, assetQuotes }: LiveGraphProps
     const laid = layoutElements(initialNodes, initialEdges);
     setNodes(laid);
     setEdges(initialEdges);
-  }, [data, setNodes, setEdges, isDark, assetQuotes]);
+  }, [data, setNodes, setEdges, isDark, assetQuotes, highlightedNodeIds]);
 
   useEffect(() => {
     setNodes(nds => nds.map(n => ({

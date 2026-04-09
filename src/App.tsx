@@ -3,6 +3,7 @@ import { Newspaper, Sparkles } from 'lucide-react';
 import { Header } from './components/Header';
 import { EventPanel } from './components/EventPanel';
 import { LiveGraph } from './components/LiveGraph';
+import { EventSearch } from './components/EventSearch';
 import { SummaryPanel } from './components/SummaryPanel';
 import { MarketPulse } from './components/MarketPulse';
 import { HistoryDrawer } from './components/HistoryDrawer';
@@ -15,6 +16,7 @@ import { ShareModal } from './components/ShareModal';
 import { useAnalysis } from './hooks/useAnalysis';
 import { useKeyboardShortcuts, buildShortcutRegistry } from './hooks/useKeyboardShortcuts';
 import { exportToPNG, exportToPDF } from './services/exportService';
+import { generateShareUrl, copyShareUrl } from './services/shareUrl';
 import { useLocale } from './i18n';
 
 export default function App() {
@@ -61,6 +63,25 @@ export default function App() {
 
   const { helpOpen, setHelpOpen } = useKeyboardShortcuts(shortcutRegistry);
 
+  // ── Event search highlight ──
+  const [highlightedNodeIds, setHighlightedNodeIds] = useState<string[]>([]);
+  const nodeMap = useMemo(() =>
+    data.nodes.map(n => ({ id: n.id, label: n.label, type: n.type })),
+    [data.nodes]
+  );
+
+  // ── Quick share URL ──
+  const [shareUrlToast, setShareUrlToast] = useState(false);
+  const handleQuickShare = useCallback(async () => {
+    if (!hasData || !analyzedHotspot) return;
+    const url = generateShareUrl(analyzedHotspot, data);
+    const ok = await copyShareUrl(url);
+    if (ok) {
+      setShareUrlToast(true);
+      setTimeout(() => setShareUrlToast(false), 2500);
+    }
+  }, [hasData, analyzedHotspot, data]);
+
   // ── Share modal ──
   const [shareOpen, setShareOpen] = useState(false);
   const shareReportData = useMemo(() => {
@@ -98,6 +119,7 @@ export default function App() {
         onOpenCompare={() => { setCompareLeft(null); setCompareRight(null); navigate('/compare'); }}
         onOpenTemplates={() => setTemplateOpen(true)}
         onOpenShare={() => setShareOpen(true)}
+        onQuickShare={handleQuickShare}
         hasAnalysis={hasData}
         shortcutRegistry={shortcutRegistry}
       />
@@ -229,8 +251,15 @@ export default function App() {
           {hasData && (
             <ErrorBoundary fallbackTitle="图表渲染出错">
               <div className="flex-1 flex min-h-0">
-                <div className="flex-1 min-w-0 relative">
-                  <LiveGraph data={data} animate={shouldAnimate} assetQuotes={assetQuotes} />
+                <div className="flex-1 min-w-0 relative flex flex-col">
+                  {/* Event Search Bar */}
+                  <EventSearch
+                    onHighlight={setHighlightedNodeIds}
+                    nodeMap={nodeMap}
+                  />
+                  <div className="flex-1 min-h-0">
+                    <LiveGraph data={data} animate={shouldAnimate} assetQuotes={assetQuotes} highlightedNodeIds={highlightedNodeIds} />
+                  </div>
                   {loadingStep && !loading && (
                     <div
                       className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md text-xs font-medium"
@@ -315,6 +344,20 @@ export default function App() {
         onClose={() => setShareOpen(false)}
         reportData={shareReportData}
       />
+
+      {/* Quick Share URL toast */}
+      {shareUrlToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-xl text-xs font-medium backdrop-blur-md animate-fade-up"
+          style={{
+            background: 'var(--success)',
+            color: '#fff',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          }}
+        >
+          {t('quickShare.toast')}
+        </div>
+      )}
     </div>
   );
 }

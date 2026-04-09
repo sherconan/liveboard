@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, PanelLeftClose, PanelLeft, Clock, Download, ChevronDown, Sun, Moon, GitCompare, History, WifiOff, RefreshCw, Image, Printer, BookOpen, Share2 } from 'lucide-react';
+import { Activity, PanelLeftClose, PanelLeft, Clock, Download, ChevronDown, Sun, Moon, GitCompare, History, WifiOff, RefreshCw, Image, Printer, BookOpen, Share2, Link2 } from 'lucide-react';
 import { Analysis } from '../services/llm';
 import { useTheme } from '../theme';
 import { useLocale } from '../i18n';
@@ -62,6 +62,7 @@ interface HeaderProps {
   onOpenCompare: () => void;
   onOpenTemplates: () => void;
   onOpenShare?: () => void;
+  onQuickShare?: () => void;
   hasAnalysis?: boolean;
   shortcutRegistry?: ShortcutRegistry;
 }
@@ -72,7 +73,7 @@ export function Header({
   analyses, currentIndex,
   onSelectAnalysis, onExport,
   historyCount, onOpenHistory, onOpenCompare, onOpenTemplates,
-  onOpenShare, hasAnalysis,
+  onOpenShare, onQuickShare, hasAnalysis,
   shortcutRegistry,
 }: HeaderProps) {
   const [historyOpen, setHistoryOpen] = React.useState(false);
@@ -261,6 +262,26 @@ export function Header({
             </>
           )}
         </div>
+      )}
+
+      {/* Quick Share URL */}
+      {onQuickShare && (
+        <button
+          onClick={onQuickShare}
+          disabled={!hasAnalysis}
+          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs transition-colors no-export"
+          style={{
+            color: hasAnalysis ? 'var(--text-secondary)' : 'var(--text-muted)',
+            opacity: hasAnalysis ? 1 : 0.4,
+            cursor: hasAnalysis ? 'pointer' : 'not-allowed',
+          }}
+          onMouseEnter={e => { if (hasAnalysis) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          title={t('quickShare.button')}
+        >
+          <Link2 className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">{t('quickShare.button')}</span>
+        </button>
       )}
 
       {/* Share report */}

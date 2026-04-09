@@ -214,6 +214,20 @@ const translations: Record<Locale, Record<string, string>> = {
     'share.chars': '字符',
     'header.share': '分享',
 
+    // Event Search
+    'search.placeholder': '搜索图中事件、变量、资产...',
+    'search.matches': '匹配',
+    'search.noMatch': '无匹配',
+
+    // Quick Share URL
+    'quickShare.button': '分享链接',
+    'quickShare.copied': '链接已复制',
+    'quickShare.toast': '分享链接已复制到剪贴板',
+    'quickShare.title': '快速分享',
+
+    // Export Graph
+    'export.graphPNG': '导出图表',
+
     // Relative time
     'time.justNow': '刚刚',
     'time.minutesAgo': '分钟前',
@@ -428,6 +442,20 @@ const translations: Record<Locale, Record<string, string>> = {
     'share.toast': 'Copied to clipboard',
     'share.chars': 'chars',
     'header.share': 'Share',
+
+    // Event Search
+    'search.placeholder': 'Search events, variables, assets...',
+    'search.matches': 'matches',
+    'search.noMatch': 'No match',
+
+    // Quick Share URL
+    'quickShare.button': 'Share Link',
+    'quickShare.copied': 'Link Copied',
+    'quickShare.toast': 'Share link copied to clipboard',
+    'quickShare.title': 'Quick Share',
+
+    // Export Graph
+    'export.graphPNG': 'Export Graph',
 
     // Relative time
     'time.justNow': 'Just now',
