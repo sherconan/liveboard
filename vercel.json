@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/api/llm/:path*", "destination": "https://crossword-centers-campaign-loaded.trycloudflare.com/:path*" },
+    { "source": "/api/gamma/:path*", "destination": "https://gamma-api.polymarket.com/:path*" },
+    { "source": "/api/clob/:path*", "destination": "https://clob.polymarket.com/:path*" },
+    { "source": "/api/wscn/:path*", "destination": "https://api-one.wallstcn.com/:path*" },
+    { "source": "/api/sina/:path*", "destination": "https://feed.mix.sina.com.cn/:path*" },
+    { "source": "/api/reddit/:path*", "destination": "https://www.reddit.com/:path*" },
+    { "source": "/api/stocktwits/:path*", "destination": "https://api.stocktwits.com/:path*" },
+    { "source": "/api/bocha/:path*", "destination": "https://api.bochaai.com/:path*" },
+    { "source": "/api/eastmoney/:path*", "destination": "https://push2.eastmoney.com/:path*" },
+    { "source": "/api/em-search/:path*", "destination": "https://mkapi2.dfcfs.com/:path*" }
+  ]
+}
