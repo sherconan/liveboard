@@ -8,3 +8,4 @@ coverage/
 !.env.example
 STATUS.md
 test-results/
+.vercel
