@@ -5,7 +5,7 @@
   "framework": "vite",
   "installCommand": "npm install",
   "rewrites": [
-    { "source": "/api/llm/:path*", "destination": "https://crossword-centers-campaign-loaded.trycloudflare.com/:path*" },
+    { "source": "/api/llm/:path*", "destination": "https://api.bochaai.com/:path*" },
     { "source": "/api/gamma/:path*", "destination": "https://gamma-api.polymarket.com/:path*" },
     { "source": "/api/clob/:path*", "destination": "https://clob.polymarket.com/:path*" },
     { "source": "/api/wscn/:path*", "destination": "https://api-one.wallstcn.com/:path*" },
